@@ -1,0 +1,116 @@
+/**
+ * @file firestore.rules
+ * @description Security rules for the Bar Sales application.
+ *
+ * ## Core Philosophy
+ * This ruleset is designed for an internal business application where authenticated
+ * users (e.g., staff) have broad permissions to manage day-to-day operational
+ * data like sales and stock levels. A stricter, admin-only policy is reserved for
+ * foundational data like item definitions, which should not be changed by regular staff.
+ *
+ * ## Data Structure
+ * The data model is flat, consisting of three top-level collections:
+ * - `/items`: Contains definitions of products sold.
+ * - `/sales`: A log of all individual sale transactions.
+ * - `/stockLevels`: A log of daily opening and closing stock for items.
+ *
+ * ## Key Security Decisions
+ * - Authenticated Access for Operations: Any signed-in user is treated as trusted
+ *   staff and is granted full create, read, update, and delete (CRUD) permissions
+ *   on the `/sales` and `/stockLevels` collections.
+ * - Admin-Only for Core Data: The `/items` collection is locked down by default.
+ *   Access is explicitly denied pending the implementation of a specific
+ *   administrator role check (e.g., via custom claims). This prevents accidental
+ *   or unauthorized modification of core product data.
+ * - No User-Specific Data: The ruleset assumes no data is private to a single
+ *   user. All operational data is shared among all authenticated staff.
+ *
+ * ## Denormalization for Authorization
+ * The current flat structure does not require denormalization for authorization,
+ * as access is not dependent on related documents. This leads to simple, fast,
+ * and cost-effective rule execution without any `get()` or `exists()` calls to
+ * other documents.
+ *
+ * ## Structural Segregation
+ * The data is segregated into distinct top-level collections based on its purpose
+ * (`items`, `sales`, `stockLevels`). This provides clear and secure boundaries,
+ * ensuring that the security posture for one data type does not affect another.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // Helper Functions
+    // -------------------------------------------------------------------------
+
+    /**
+     * Checks if the user is authenticated.
+     */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /**
+     * Checks if a document already exists. Used to protect update/delete operations.
+     */
+    function isExistingDoc() {
+      return resource != null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Rules
+    // -------------------------------------------------------------------------
+
+    /**
+     * @description Defines security rules for the 'items' collection.
+     * Access is completely restricted by default, awaiting an admin implementation.
+     * @path /items/{itemId}
+     * @allow (none) No operations are currently permitted.
+     * @deny (create) An authenticated user tries to create a new item. Fails because only admins should manage items.
+     * @principle Enforces a secure default by denying all access to foundational data until a specific admin verification mechanism (e.g., custom claims) is implemented.
+     */
+    match /items/{itemId} {
+      // CRITICAL: The IR specifies 'admin only' access. Since no admin role is defined,
+      // all access is denied as a secure default.
+      // TODO: Implement an admin check, for example: `request.auth.token.isAdmin == true`
+      allow get: if false;
+      allow list: if false;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    /**
+     * @description Defines security rules for the 'sales' collection.
+     * Allows any authenticated user to manage sales records.
+     * @path /sales/{saleId}
+     * @allow (create) An authenticated user creates a new sale record.
+     * @deny (create) An unauthenticated user tries to create a new sale record.
+     * @principle Grants full CRUD access to any authenticated user, which is a common pattern for internal applications where all logged-in users are considered trusted staff.
+     */
+    match /sales/{saleId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && isExistingDoc();
+      allow delete: if isSignedIn() && isExistingDoc();
+    }
+
+    /**
+     * @description Defines security rules for the 'stockLevels' collection.
+     * Allows any authenticated user to manage stock level records.
+     * @path /stockLevels/{stockLevelId}
+     * @allow (create) An authenticated user creates a new stock level entry.
+     * @deny (create) An unauthenticated user tries to create a new stock level entry.
+     * @principle Grants full CRUD access to any authenticated user, suitable for internal tools where staff manage shared operational data.
+     */
+    match /stockLevels/{stockLevelId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && isExistingDoc();
+      allow delete: if isSignedIn() && isExistingDoc();
+    }
+  }
+}

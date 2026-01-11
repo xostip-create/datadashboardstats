@@ -1,0 +1,155 @@
+{
+  "entities": {
+    "Item": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Item",
+      "type": "object",
+      "description": "Represents an item sold at the bar.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the item."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the item."
+        },
+        "unitPrice": {
+          "type": "number",
+          "description": "The unit price of the item."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "unitPrice"
+      ]
+    },
+    "Sale": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Sale",
+      "type": "object",
+      "description": "Represents a single sale transaction.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the sale."
+        },
+        "itemId": {
+          "type": "string",
+          "description": "Reference to Item. (Relationship: Item 1:N Sale)"
+        },
+        "quantity": {
+          "type": "number",
+          "description": "Quantity of the item sold."
+        },
+        "saleDate": {
+          "type": "string",
+          "description": "The date and time of the sale.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "itemId",
+        "quantity",
+        "saleDate"
+      ]
+    },
+    "StockLevel": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StockLevel",
+      "type": "object",
+      "description": "Represents the stock level of an item on a particular date.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the stock level entry."
+        },
+        "itemId": {
+          "type": "string",
+          "description": "Reference to Item. (Relationship: Item 1:N StockLevel)"
+        },
+        "date": {
+          "type": "string",
+          "description": "The date for which the stock level is recorded.",
+          "format": "date"
+        },
+        "openingStock": {
+          "type": "number",
+          "description": "The opening stock quantity for the item on the given date."
+        },
+        "closingStock": {
+          "type": "number",
+          "description": "The closing stock quantity for the item on the given date."
+        }
+      },
+      "required": [
+        "id",
+        "itemId",
+        "date",
+        "openingStock",
+        "closingStock"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/items/{itemId}",
+        "definition": {
+          "entityName": "Item",
+          "schema": {
+            "$ref": "#/backend/entities/Item"
+          },
+          "description": "Stores item definitions.",
+          "params": [
+            {
+              "name": "itemId",
+              "description": "The unique identifier of the item."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/sales/{saleId}",
+        "definition": {
+          "entityName": "Sale",
+          "schema": {
+            "$ref": "#/backend/entities/Sale"
+          },
+          "description": "Stores sale records.",
+          "params": [
+            {
+              "name": "saleId",
+              "description": "The unique identifier of the sale record."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/stockLevels/{stockLevelId}",
+        "definition": {
+          "entityName": "StockLevel",
+          "schema": {
+            "$ref": "#/backend/entities/StockLevel"
+          },
+          "description": "Stores stock level records.",
+          "params": [
+            {
+              "name": "stockLevelId",
+              "description": "The unique identifier of the stock level record."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to optimize for the BarBook application's core features: Sales Logging, Opening/Closing Stock Input, and Sales Summaries. It prioritizes authorization independence, clarity, and scalability.\n\n*   `/items`: Stores item definitions. This collection has a homogeneous security posture (admin only).\n*   `/sales/{saleId}`: Stores sale records.  Data is stored without nested data and adheres to the principle of Structural Segregation, as access to sales data is uniform.\n*   `/stockLevels/{stockLevelId}`: Stores stock level records.  Data is stored without nested data and adheres to the principle of Structural Segregation, as access to stock level data is uniform.\n\nThis structure supports the QAPs because `list` operations on each of the collections are secure, and authorization is managed via secure rules.\n\nAuthorization Independence:\n\n*   The structure avoids `get()` calls in security rules, crucial for atomic operations. There are no hierarchical authorizations (e.g., a `sale` document's access depending on an `item`'s attributes)."
+  }
+}
