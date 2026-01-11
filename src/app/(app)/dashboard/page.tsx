@@ -1,7 +1,6 @@
 'use client';
 
 import * as React from 'react';
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
 import { Package, ShoppingBag, TrendingDown } from 'lucide-react';
 import {
   Card,
@@ -17,11 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  ChartContainer,
-  ChartTooltipContent,
-} from '@/components/ui/chart';
-import { getSalesByItem, getStockSummary, sales, inventory } from '@/lib/data';
+import { getSalesByItem, getStockSummary, sales } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
@@ -51,11 +46,6 @@ export default function DashboardPage() {
   const totalRevenue = sales.reduce((acc, sale) => acc + sale.total, 0);
   const totalItemsSold = sales.reduce((acc, sale) => acc + sale.quantity, 0);
   const totalDiscrepancy = stockSummary.reduce((acc, item) => acc + item.discrepancy, 0);
-
-  const chartData = salesSummary.map(item => ({
-    name: item.name,
-    sales: item.total,
-  }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -116,32 +106,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Sales Breakdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ChartContainer config={{}} className="h-[300px] w-full">
-              <BarChart data={chartData} accessibilityLayer>
-                <CartesianGrid vertical={false} />
-                <XAxis
-                  dataKey="name"
-                  tickLine={false}
-                  tickMargin={10}
-                  axisLine={false}
-                  tickFormatter={(value) => value.slice(0, 10)}
-                />
-                <YAxis tickFormatter={(value) => `₦${value}`} />
-                <Tooltip
-                  cursor={{ fill: 'hsl(var(--muted))' }}
-                  content={<ChartTooltipContent formatter={(value, name) => [`₦${(value as number).toFixed(2)}`, name]} />}
-                />
-                <Bar dataKey="sales" fill="hsl(var(--primary))" radius={4} />
-              </BarChart>
-            </ChartContainer>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Stock Summary</CardTitle>
