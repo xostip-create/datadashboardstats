@@ -23,36 +23,11 @@ export type Sale = {
   timestamp: Date;
 };
 
-export const inventory: Item[] = [
-  { id: 'item-1', name: 'Craft Lager', icon: Beer, price: 6.50, category: 'Drinks' },
-  { id: 'item-2', name: 'House Red Wine', icon: Wine, price: 8.00, category: 'Drinks' },
-  { id: 'item-3', name: 'Sparkling Water', icon: GlassWater, price: 3.00, category: 'Drinks' },
-  { id: 'item-4', name: 'Bourbon Old Fashioned', icon: Bot, price: 12.00, category: 'Drinks' },
-  { id: 'item-5', name: 'Bar Nuts', icon: Beef, price: 4.50, category: 'Food' },
-  { id: 'item-6', name: 'IPA', icon: Beer, price: 7.00, category: 'Drinks' },
-  { id: 'item-7', name: 'Sauvignon Blanc', icon: Wine, price: 9.00, category: 'Drinks' },
-];
+export const inventory: Item[] = [];
 
-export const stock: StockRecord[] = [
-  { itemId: 'item-1', opening: 100, closing: 0 },
-  { itemId: 'item-2', opening: 50, closing: 0 },
-  { itemId: 'item-3', opening: 80, closing: 0 },
-  { itemId: 'item-4', opening: 30, closing: 0 },
-  { itemId: 'item-5', opening: 40, closing: 0 },
-  { itemId: 'item-6', opening: 90, closing: 0 },
-  { itemId: 'item-7', opening: 45, closing: 0 },
-];
+export const stock: StockRecord[] = [];
 
-export const sales: Sale[] = [
-  { id: 'sale-1', itemId: 'item-1', quantity: 2, total: 13.00, timestamp: new Date() },
-  { id: 'sale-2', itemId: 'item-4', quantity: 1, total: 12.00, timestamp: new Date() },
-  { id: 'sale-3', itemId: 'item-2', quantity: 3, total: 24.00, timestamp: new Date() },
-  { id: 'sale-4', itemId: 'item-5', quantity: 2, total: 9.00, timestamp: new Date() },
-  { id: 'sale-5', itemId: 'item-1', quantity: 4, total: 26.00, timestamp: new Date() },
-  { id: 'sale-6', itemId: 'item-6', quantity: 5, total: 35.00, timestamp: new Date() },
-  { id: 'sale-7', itemId: 'item-7', quantity: 2, total: 18.00, timestamp: new Date() },
-  { id: 'sale-8', itemId: 'item-3', quantity: 3, total: 9.00, timestamp: new Date() },
-];
+export const sales: Sale[] = [];
 
 export const getSalesByItem = () => {
   const salesByItem = new Map<string, { quantity: number; total: number }>();
