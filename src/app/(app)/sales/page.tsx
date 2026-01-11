@@ -162,7 +162,7 @@ export default function SalesPage() {
                   <TableRow key={sale.id}>
                     <TableCell className="font-medium">{item?.name || 'Unknown'}</TableCell>
                     <TableCell className="text-right">{sale.quantity}</TableCell>
-                    <TableCell className="text-right">${sale.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">₦{sale.total.toFixed(2)}</TableCell>
                     <TableCell className="text-right">
                       {sale.timestamp.toLocaleTimeString()}
                     </TableCell>

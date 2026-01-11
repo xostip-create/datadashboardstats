@@ -2,7 +2,7 @@
 
 import * as React from 'react';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip } from 'recharts';
-import { DollarSign, Package, ShoppingBag, TrendingDown } from 'lucide-react';
+import { Package, ShoppingBag, TrendingDown } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -25,6 +25,25 @@ import { getSalesByItem, getStockSummary, sales, inventory } from '@/lib/data';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
+function NairaIcon({ className }: { className?: string }) {
+    return (
+      <svg
+        className={className}
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6 18h12" />
+        <path d="M6 12h12" />
+        <path d="M19 6H5L12 20L19 6Z" />
+      </svg>
+    );
+  }
+
 export default function DashboardPage() {
   const salesSummary = getSalesByItem();
   const stockSummary = getStockSummary();
@@ -44,11 +63,11 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <NairaIcon className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold font-headline">
-              ${totalRevenue.toFixed(2)}
+              ₦{totalRevenue.toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground">
               Today's total sales
@@ -113,10 +132,10 @@ export default function DashboardPage() {
                   axisLine={false}
                   tickFormatter={(value) => value.slice(0, 10)}
                 />
-                <YAxis />
+                <YAxis tickFormatter={(value) => `₦${value}`} />
                 <Tooltip
                   cursor={{ fill: 'hsl(var(--muted))' }}
-                  content={<ChartTooltipContent />}
+                  content={<ChartTooltipContent formatter={(value, name) => [`₦${(value as number).toFixed(2)}`, name]} />}
                 />
                 <Bar dataKey="sales" fill="hsl(var(--primary))" radius={4} />
               </BarChart>
