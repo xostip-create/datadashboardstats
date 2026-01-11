@@ -201,7 +201,7 @@ export default function SalesPage() {
                         control={salesForm.control}
                         name="itemId"
                         render={({ field }) => (
-                          <FormItem className="flex-1 w-full">
+                          <FormItem className="flex flex-col">
                             <FormLabel>Item</FormLabel>
                              <Popover open={isPopoverOpen} onOpenChange={setPopoverOpen}>
                               <PopoverTrigger asChild>
@@ -223,7 +223,7 @@ export default function SalesPage() {
                                   </Button>
                                 </FormControl>
                               </PopoverTrigger>
-                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
                                 <Command>
                                   <CommandInput placeholder="Search item..." />
                                   <CommandList>
@@ -231,10 +231,10 @@ export default function SalesPage() {
                                     <CommandGroup>
                                       {items?.map((item) => (
                                         <CommandItem
-                                          value={item.name}
+                                          value={item.id}
                                           key={item.id}
-                                          onSelect={() => {
-                                            salesForm.setValue("itemId", item.id)
+                                          onSelect={(currentValue) => {
+                                            salesForm.setValue("itemId", currentValue === field.value ? "" : currentValue)
                                             setPopoverOpen(false)
                                           }}
                                         >
@@ -357,4 +357,3 @@ export default function SalesPage() {
       </Card>
     </div>
   );
-}
