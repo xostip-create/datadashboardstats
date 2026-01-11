@@ -26,6 +26,7 @@ import {
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { SheetTitle } from '@/components/ui/sheet';
 
 const menuItems = [
   {
@@ -78,6 +79,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <Sidebar>
+        <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
         <SidebarHeader>
           <Logo />
         </SidebarHeader>
