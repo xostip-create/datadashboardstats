@@ -231,10 +231,10 @@ export default function SalesPage() {
                                     <CommandGroup>
                                       {items?.map((item) => (
                                         <CommandItem
-                                          value={item.id}
+                                          value={item.name}
                                           key={item.id}
-                                          onSelect={(currentValue) => {
-                                            salesForm.setValue("itemId", currentValue === field.value ? "" : currentValue)
+                                          onSelect={() => {
+                                            salesForm.setValue("itemId", item.id)
                                             setPopoverOpen(false)
                                           }}
                                         >
@@ -357,3 +357,4 @@ export default function SalesPage() {
       </Card>
     </div>
   );
+}
