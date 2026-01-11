@@ -27,8 +27,10 @@ import {
 import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { SheetTitle } from '@/components/ui/sheet';
 import { DataProvider } from '@/lib/data-provider';
+import { useAuth, useUser } from '@/firebase';
+import { signOut } from 'firebase/auth';
+import { SheetTitle } from '@/components/ui/sheet';
 
 const menuItems = [
   {
@@ -56,26 +58,23 @@ const menuItems = [
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = React.useState<{email: string} | null>(null);
-  const [isLoading, setIsLoading] = React.useState(true);
-
+  const auth = useAuth();
+  const { user, isUserLoading } = useUser();
 
   React.useEffect(() => {
-    const user = sessionStorage.getItem('barbook-user');
-    if (user) {
-      setUser(JSON.parse(user));
-    } else {
+    if (!isUserLoading && !user) {
       router.push('/login');
     }
-    setIsLoading(false);
-  }, [router]);
+  }, [user, isUserLoading, router]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('barbook-user');
-    router.push('/login');
+  const handleLogout = async () => {
+    if (auth) {
+      await signOut(auth);
+      router.push('/login');
+    }
   };
 
-  if (isLoading || !user) {
+  if (isUserLoading || !user) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Loading...</p>
@@ -110,12 +109,14 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <SidebarFooter>
           <div className="flex items-center gap-3">
             <Avatar className="h-9 w-9">
-              <AvatarImage src="https://picsum.photos/seed/avatar/100/100" />
-              <AvatarFallback>BB</AvatarFallback>
+              <AvatarImage src={user.photoURL || "https://picsum.photos/seed/avatar/100/100"} />
+              <AvatarFallback>
+                {user.email?.charAt(0).toUpperCase() || 'U'}
+              </AvatarFallback>
             </Avatar>
             <div className="flex flex-col text-sm">
               <span className="font-semibold text-sidebar-foreground">
-                Bar Owner
+                {user.displayName || 'Bar Owner'}
               </span>
               <span className="text-xs text-sidebar-foreground/70">
                 {user?.email}

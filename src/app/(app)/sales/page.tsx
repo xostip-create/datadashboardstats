@@ -4,11 +4,11 @@ import * as React from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Check, ChevronsUpDown, PlusCircle, MoreHorizontal, Pencil, Trash2, Bot, Beef } from 'lucide-react';
+import { Check, ChevronsUpDown, PlusCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 
 import { useDataContext } from '@/lib/data-provider';
-import type { Item, Sale, StockRecord } from '@/lib/data';
-import { Button, buttonVariants } from '@/components/ui/button';
+import type { Item, Sale } from '@/lib/data';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -53,7 +53,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useFirestore } from '@/firebase';
+import { addDoc, collection, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 
 const salesFormSchema = z.object({
@@ -63,19 +64,12 @@ const salesFormSchema = z.object({
 
 type SalesFormValues = z.infer<typeof salesFormSchema>;
 
-const itemFormSchema = z.object({
-    name: z.string().min(1, 'Item name is required.'),
-    price: z.coerce.number().min(0.01, 'Price must be greater than 0.'),
-    category: z.enum(['Drinks', 'Food']),
-});
-
-type ItemFormValues = z.infer<typeof itemFormSchema>;
-
-function FormattedTime({ date }: { date: Date | string }) {
+function FormattedTime({ date }: { date: any }) {
     const [time, setTime] = React.useState('');
     React.useEffect(() => {
         if (date) {
-            setTime(new Date(date).toLocaleTimeString());
+            const d = date.toDate ? date.toDate() : new Date(date);
+            setTime(d.toLocaleTimeString());
         }
     }, [date]);
     return <>{time}</>;
@@ -84,28 +78,18 @@ function FormattedTime({ date }: { date: Date | string }) {
 
 export default function SalesPage() {
   const { toast } = useToast();
-  const { items, sales, setSales, setItems, addStockRecord } = useDataContext();
+  const { items, sales } = useDataContext();
+  const firestore = useFirestore();
   const [isPopoverOpen, setPopoverOpen] = React.useState(false);
+  const [isSaleModalOpen, setSaleModalOpen] = React.useState(false);
 
   const [editingSale, setEditingSale] = React.useState<Sale | null>(null);
-  const [isSaleModalOpen, setSaleModalOpen] = React.useState(false);
-  const [isItemModalOpen, setItemModalOpen] = React.useState(false);
-
 
   const salesForm = useForm<SalesFormValues>({
     resolver: zodResolver(salesFormSchema),
     defaultValues: {
       itemId: '',
       quantity: 1,
-    },
-  });
-
-  const itemForm = useForm<ItemFormValues>({
-    resolver: zodResolver(itemFormSchema),
-    defaultValues: {
-      name: '',
-      price: 0,
-      category: 'Drinks',
     },
   });
 
@@ -120,78 +104,67 @@ export default function SalesPage() {
   }, [editingSale, salesForm]);
 
 
-  function onSaleSubmit(data: SalesFormValues) {
+  async function onSaleSubmit(data: SalesFormValues) {
+    if(!firestore || !items) return;
     const item = items.find((i) => i.id === data.itemId);
     if (!item) return;
 
-    if (editingSale) {
-        // Update existing sale
-        const updatedSale: Sale = {
-            ...editingSale,
-            ...data,
-            total: item.price * data.quantity,
-        };
-        setSales(prev => prev.map(s => s.id === editingSale.id ? updatedSale : s));
-        toast({
-            title: 'Sale Updated',
-            description: `Sale record for ${item.name} has been updated.`,
-        });
-    } else {
-        // Create new sale
-        const newSale: Sale = {
-          id: `sale-${Date.now()}`,
-          itemId: data.itemId,
-          quantity: data.quantity,
-          total: item.price * data.quantity,
-          timestamp: new Date(),
-        };
+    try {
+        if (editingSale) {
+            // Update existing sale
+            const saleRef = doc(firestore, 'sales', editingSale.id);
+            await updateDoc(saleRef, {
+                itemId: data.itemId,
+                quantity: data.quantity,
+            });
 
-        setSales((prev) => [newSale, ...prev]);
+            toast({
+                title: 'Sale Updated',
+                description: `Sale record for ${item.name} has been updated.`,
+            });
+        } else {
+            // Create new sale
+            const salesCollection = collection(firestore, 'sales');
+            await addDoc(salesCollection, {
+                itemId: data.itemId,
+                quantity: data.quantity,
+                saleDate: serverTimestamp(),
+            });
 
+            toast({
+              title: 'Sale Recorded',
+              description: `${data.quantity} x ${item.name} added.`,
+            });
+        }
+        salesForm.reset({ itemId: '', quantity: 1 });
+        setEditingSale(null);
+        setSaleModalOpen(false);
+    } catch(e: any) {
         toast({
-          title: 'Sale Recorded',
-          description: `${data.quantity} x ${item.name} added.`,
+            variant: "destructive",
+            title: "Uh oh! Something went wrong.",
+            description: e.message || "Could not save sale.",
         });
     }
-
-
-    salesForm.reset({ itemId: '', quantity: 1 });
-    setEditingSale(null);
-    setSaleModalOpen(false);
   }
 
-  function handleDeleteSale(saleId: string) {
-    setSales(prev => prev.filter(s => s.id !== saleId));
-    toast({
-        title: 'Sale Deleted',
-        description: 'The sale record has been removed.',
-        variant: 'destructive'
-    });
-  }
-
-  function onItemSubmit(data: ItemFormValues) {
-    const newItem: Item = {
-        id: `item-${Date.now()}`,
-        ...data,
-        icon: data.category === 'Drinks' ? Bot : Beef, // Default icons
-    };
-    setItems((prev) => [...prev, newItem]);
-    
-    const newStockRecord: StockRecord = {
-        itemId: newItem.id,
-        opening: 0,
-        closing: 0,
-    };
-    addStockRecord(newStockRecord);
-
-    toast({
-        title: 'Item Created',
-        description: `${data.name} has been added to the inventory.`,
-    });
-
-    itemForm.reset();
-    setItemModalOpen(false);
-    salesForm.setValue('itemId', newItem.id);
+  async function handleDeleteSale(saleId: string) {
+    if(!firestore) return;
+    try {
+        const saleRef = doc(firestore, 'sales', saleId);
+        await deleteDoc(saleRef);
+        toast({
+            title: 'Sale Deleted',
+            description: 'The sale record has been removed.',
+            variant: 'destructive'
+        });
+    } catch (e: any) {
+        toast({
+            variant: "destructive",
+            title: "Uh oh! Something went wrong.",
+            description: e.message || "Could not delete sale.",
+        });
+    }
   }
 
   return (
@@ -200,7 +173,7 @@ export default function SalesPage() {
         <CardHeader>
           <CardTitle>Log a New Sale</CardTitle>
           <CardDescription>
-            Select an item and enter the quantity sold. You can also add new items.
+            Select an item and enter the quantity sold.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -230,126 +203,57 @@ export default function SalesPage() {
                         render={({ field }) => (
                           <FormItem className="flex-1 w-full">
                             <FormLabel>Item</FormLabel>
-                            <div className="flex gap-2">
-                                <Popover open={isPopoverOpen} onOpenChange={setPopoverOpen}>
-                                <PopoverTrigger asChild>
-                                    <FormControl>
-                                    <Button
-                                        variant="outline"
-                                        role="combobox"
-                                        className={cn(
-                                        "w-full justify-between",
-                                        !field.value && "text-muted-foreground"
-                                        )}
-                                    >
-                                        {field.value
-                                        ? items.find(
-                                            (item) => item.id === field.value
-                                            )?.name
-                                        : "Select an item to sell"}
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                    </Button>
-                                    </FormControl>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                    <Command>
-                                    <CommandInput placeholder="Search item..." />
-                                    <CommandList>
-                                        <CommandEmpty>No item found.</CommandEmpty>
-                                        <CommandGroup>
-                                        {items.map((item) => (
-                                            <CommandItem
-                                            value={item.name}
-                                            key={item.id}
-                                            onSelect={() => {
-                                                salesForm.setValue("itemId", item.id)
-                                                setPopoverOpen(false)
-                                            }}
-                                            >
-                                            <Check
-                                                className={cn(
-                                                "mr-2 h-4 w-4",
-                                                item.id === field.value
-                                                    ? "opacity-100"
-                                                    : "opacity-0"
-                                                )}
-                                            />
-                                            {item.name}
-                                            </CommandItem>
-                                        ))}
-                                        </CommandGroup>
-                                    </CommandList>
-                                    </Command>
-                                </PopoverContent>
-                                </Popover>
-                                <Dialog open={isItemModalOpen} onOpenChange={setItemModalOpen}>
-                                    <DialogTrigger asChild>
-                                        <Button variant="outline" size="icon">
-                                            <PlusCircle className="h-4 w-4" />
-                                        </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                        <DialogHeader>
-                                            <DialogTitle>Create New Item</DialogTitle>
-                                            <DialogDescription>Add a new item to your inventory. Click save when you're done.</DialogDescription>
-                                        </DialogHeader>
-                                        <Form {...itemForm}>
-                                            <form onSubmit={itemForm.handleSubmit(onItemSubmit)} className='space-y-4'>
-                                                <FormField
-                                                    control={itemForm.control}
-                                                    name="name"
-                                                    render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Item Name</FormLabel>
-                                                        <FormControl>
-                                                        <Input placeholder="e.g. Craft Lager" {...field} />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                    )}
-                                                />
-                                                <FormField
-                                                    control={itemForm.control}
-                                                    name="price"
-                                                    render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Price</FormLabel>
-                                                        <FormControl>
-                                                        <Input type="number" placeholder="0.00" {...field} />
-                                                        </FormControl>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                    )}
-                                                />
-                                                <FormField
-                                                    control={itemForm.control}
-                                                    name="category"
-                                                    render={({ field }) => (
-                                                    <FormItem>
-                                                        <FormLabel>Category</FormLabel>
-                                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                            <FormControl>
-                                                                <SelectTrigger>
-                                                                    <SelectValue placeholder="Select a category" />
-                                                                </SelectTrigger>
-                                                            </FormControl>
-                                                            <SelectContent>
-                                                                <SelectItem value="Drinks">Drinks</SelectItem>
-                                                                <SelectItem value="Food">Food</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                        <FormMessage />
-                                                    </FormItem>
-                                                    )}
-                                                />
-                                                <DialogFooter>
-                                                    <Button type="submit">Save Item</Button>
-                                                </DialogFooter>
-                                            </form>
-                                        </Form>
-                                    </DialogContent>
-                                </Dialog>
-                            </div>
+                             <Popover open={isPopoverOpen} onOpenChange={setPopoverOpen}>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    className={cn(
+                                      "w-full justify-between",
+                                      !field.value && "text-muted-foreground"
+                                    )}
+                                  >
+                                    {field.value
+                                      ? items?.find(
+                                          (item) => item.id === field.value
+                                        )?.name
+                                      : "Select an item to sell"}
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <Command>
+                                  <CommandInput placeholder="Search item..." />
+                                  <CommandList>
+                                    <CommandEmpty>No item found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {items?.map((item) => (
+                                        <CommandItem
+                                          value={item.name}
+                                          key={item.id}
+                                          onSelect={() => {
+                                            salesForm.setValue("itemId", item.id)
+                                            setPopoverOpen(false)
+                                          }}
+                                        >
+                                          <Check
+                                            className={cn(
+                                              "mr-2 h-4 w-4",
+                                              item.id === field.value
+                                                ? "opacity-100"
+                                                : "opacity-0"
+                                            )}
+                                          />
+                                          {item.name}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
                             <FormMessage />
                           </FormItem>
                         )}
@@ -396,15 +300,15 @@ export default function SalesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales.map((sale) => {
-                const item = items.find((i) => i.id === sale.itemId);
+              {sales?.map((sale) => {
+                const item = items?.find((i) => i.id === sale.itemId);
                 return (
                   <TableRow key={sale.id}>
                     <TableCell className="font-medium whitespace-nowrap">{item?.name || 'Unknown'}</TableCell>
                     <TableCell className="text-right">{sale.quantity}</TableCell>
-                    <TableCell className="text-right">₦{sale.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">₦{(sale.quantity * (item?.unitPrice || 0)).toFixed(2)}</TableCell>
                     <TableCell className="text-right">
-                      <FormattedTime date={sale.timestamp} />
+                      <FormattedTime date={sale.saleDate} />
                     </TableCell>
                     <TableCell>
                         <DropdownMenu>

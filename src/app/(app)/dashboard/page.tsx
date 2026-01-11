@@ -44,12 +44,13 @@ export default function DashboardPage() {
   const { items, sales, stock } = useDataContext();
 
   const getSalesByItem = React.useCallback(() => {
+    if (!sales || !items) return [];
     const salesByItem = new Map<string, { quantity: number; total: number }>();
     for (const sale of sales) {
       const existing = salesByItem.get(sale.itemId) || { quantity: 0, total: 0 };
       salesByItem.set(sale.itemId, {
         quantity: existing.quantity + sale.quantity,
-        total: existing.total + sale.total,
+        total: existing.total + (sale.quantity * (items.find(i => i.id === sale.itemId)?.unitPrice || 0)),
       });
     }
     return Array.from(salesByItem.entries()).map(([itemId, data]) => {
@@ -63,22 +64,22 @@ export default function DashboardPage() {
   }, [sales, items]);
   
   const getStockSummary = React.useCallback(() => {
+      if (!stock || !items) return [];
       const salesByItem = getSalesByItem();
       return stock.map(stockItem => {
           const item = items.find(i => i.id === stockItem.itemId);
           const saleInfo = salesByItem.find(s => s.name === item?.name);
           const sold = saleInfo?.quantity || 0;
-          const expected = stockItem.opening - sold;
-          const discrepancy = stockItem.closing - expected;
+          const expected = stockItem.openingStock - sold;
+          const discrepancy = stockItem.closingStock - expected;
   
           return {
               id: item?.id || '',
               name: item?.name || 'Unknown',
-              icon: item?.icon,
-              opening: stockItem.opening,
+              opening: stockItem.openingStock,
               sold,
               expected,
-              closing: stockItem.closing,
+              closing: stockItem.closingStock,
               discrepancy,
           };
       });
@@ -87,9 +88,11 @@ export default function DashboardPage() {
   const salesSummary = getSalesByItem();
   const stockSummary = getStockSummary();
 
-  const totalRevenue = sales.reduce((acc, sale) => acc + sale.total, 0);
-  const totalItemsSold = sales.reduce((acc, sale) => acc + sale.quantity, 0);
+  const totalRevenue = sales ? sales.reduce((acc, sale) => acc + (sale.quantity * (items.find(i => i.id === sale.itemId)?.unitPrice || 0)), 0) : 0;
+  const totalItemsSold = sales ? sales.reduce((acc, sale) => acc + sale.quantity, 0) : 0;
   const totalDiscrepancy = stockSummary.reduce((acc, item) => acc + item.discrepancy, 0);
+
+  const bestSeller = salesSummary.length > 0 ? salesSummary.reduce((max, item) => item.quantity > max.quantity ? item : max) : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -127,7 +130,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold font-headline">
-              {salesSummary.length > 0 ? salesSummary.reduce((max, item) => item.quantity > max.quantity ? item : max).name : 'N/A'}
+              {bestSeller ? bestSeller.name : 'N/A'}
             </div>
             <p className="text-xs text-muted-foreground">
               Top-selling item today

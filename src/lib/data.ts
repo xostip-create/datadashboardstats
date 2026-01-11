@@ -1,30 +1,20 @@
-import type { LucideIcon } from "lucide-react";
-import { Beer, Wine, GlassWater, Beef, Bot } from 'lucide-react';
-
 export type Item = {
   id: string;
   name: string;
-  icon: LucideIcon;
-  price: number;
-  category: 'Drinks' | 'Food';
+  unitPrice: number;
 };
 
-export type StockRecord = {
+export type StockLevel = {
+  id: string;
   itemId: string;
-  opening: number;
-  closing: number;
+  date: string;
+  openingStock: number;
+  closingStock: number;
 };
 
 export type Sale = {
   id: string;
   itemId: string;
   quantity: number;
-  total: number;
-  timestamp: Date;
+  saleDate: any; // Firestore timestamp
 };
-
-export const inventory: Item[] = [];
-
-export const stock: StockRecord[] = [];
-
-export const sales: Sale[] = [];

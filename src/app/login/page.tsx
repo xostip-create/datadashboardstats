@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/card';
 import { Logo } from '@/components/logo';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth, useUser } from '@/firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address.' }),
@@ -35,8 +37,8 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = React.useState(true);
-
+  const auth = useAuth();
+  const { user, isUserLoading } = useUser();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -47,32 +49,32 @@ export default function LoginPage() {
   });
 
   React.useEffect(() => {
-    const user = sessionStorage.getItem('barbook-user');
-    if (user) {
+    if (!isUserLoading && user) {
       router.push('/dashboard');
-    } else {
-      setIsLoading(false);
     }
-  }, [router]);
+  }, [user, isUserLoading, router]);
 
-  const onSubmit = (data: LoginFormValues) => {
+  const onSubmit = async (data: LoginFormValues) => {
     const { email, password } = data;
-    if (
-      email === 'eahunanya116@gmail.com' &&
-      password === 'emmanuel1234@'
-    ) {
-      sessionStorage.setItem('barbook-user', JSON.stringify({ email }));
+    if (!auth) return;
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
       router.push('/dashboard');
-    } else {
-      toast({
-        variant: 'destructive',
-        title: 'Login Failed',
-        description: 'Incorrect email or password. Please try again.',
-      });
+    } catch (error: any) {
+        let description = 'An unexpected error occurred. Please try again.';
+        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+            description = 'Incorrect email or password. Please try again.';
+        }
+        toast({
+            variant: 'destructive',
+            title: 'Login Failed',
+            description,
+        });
     }
   };
 
-  if (isLoading) {
+  if (isUserLoading || user) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Loading...</p>

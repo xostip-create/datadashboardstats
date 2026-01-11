@@ -3,8 +3,8 @@
 import * as React from 'react';
 import { Save, Trash2 } from 'lucide-react';
 import { useDataContext } from '@/lib/data-provider';
-import type { StockRecord, Item } from '@/lib/data';
-import { Button, buttonVariants } from '@/components/ui/button';
+import type { StockLevel, Item } from '@/lib/data';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -23,27 +23,29 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
+import { useFirestore } from '@/firebase';
+import { doc, writeBatch, deleteDoc } from 'firebase/firestore';
 
 type StockInputProps = {
-  stockData: StockRecord[];
+  stockData: StockLevel[];
   items: Item[];
-  type: 'opening' | 'closing';
-  onStockUpdate: (updatedStock: StockRecord[]) => void;
-  onStockDelete: (itemId: string) => void;
+  type: 'openingStock' | 'closingStock';
 };
 
-function StockInputTable({ items, stockData, type, onStockUpdate, onStockDelete }: StockInputProps) {
+function StockInputTable({ items, stockData, type }: StockInputProps) {
   const { toast } = useToast();
-  const [localStock, setLocalStock] = React.useState(stockData);
+  const firestore = useFirestore();
+  const [localStock, setLocalStock] = React.useState<StockLevel[]>([]);
 
   React.useEffect(() => {
-    setLocalStock(stockData);
+    if (stockData) {
+      setLocalStock(JSON.parse(JSON.stringify(stockData)));
+    }
   }, [stockData]);
 
-  const handleStockChange = (itemId: string, value: string) => {
+  const handleStockChange = (stockId: string, value: string) => {
     const newStock = localStock.map((item) => {
-      if (item.itemId === itemId) {
+      if (item.id === stockId) {
         return { ...item, [type]: Number(value) };
       }
       return item;
@@ -51,23 +53,56 @@ function StockInputTable({ items, stockData, type, onStockUpdate, onStockDelete 
     setLocalStock(newStock);
   };
 
-  const handleSave = () => {
-    onStockUpdate(localStock);
-    toast({
-      title: 'Stock Saved',
-      description: `The ${type} stock levels have been updated.`,
+  const handleSave = async () => {
+    if (!firestore) return;
+    const batch = writeBatch(firestore);
+    localStock.forEach((stockItem) => {
+        const stockRef = doc(firestore, 'stockLevels', stockItem.id);
+        batch.update(stockRef, { [type]: stockItem[type] });
     });
+
+    try {
+        await batch.commit();
+        toast({
+          title: 'Stock Saved',
+          description: `The ${type === 'openingStock' ? 'opening' : 'closing'} stock levels have been updated.`,
+        });
+    } catch(e: any) {
+        toast({
+            variant: "destructive",
+            title: "Uh oh! Something went wrong.",
+            description: e.message || "Could not save stock levels.",
+        });
+    }
   };
+
+  const onStockDelete = async (stockId: string) => {
+      if (!firestore) return;
+      try {
+        await deleteDoc(doc(firestore, 'stockLevels', stockId));
+        toast({
+            title: 'Stock Record Deleted',
+            description: 'The stock record has been removed.',
+            variant: 'destructive',
+        });
+      } catch (e: any) {
+          toast({
+            variant: "destructive",
+            title: "Uh oh! Something went wrong.",
+            description: e.message || "Could not delete stock record.",
+        });
+      }
+  }
 
   return (
     <Card>
        <CardHeader className='flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
         <div>
-            <CardTitle>Update {type.charAt(0).toUpperCase() + type.slice(1)} Stock</CardTitle>
+            <CardTitle>Update {type === 'openingStock' ? 'Opening' : 'Closing'} Stock</CardTitle>
             <CardDescription>Enter the stock count for each item.</CardDescription>
         </div>
         <Button onClick={handleSave} className="w-full sm:w-auto">
-          <Save className="mr-2 h-4 w-4" /> Save {type.charAt(0).toUpperCase() + type.slice(1)}
+          <Save className="mr-2 h-4 w-4" /> Save {type === 'openingStock' ? 'Opening' : 'Closing'}
         </Button>
       </CardHeader>
       <CardContent className="overflow-x-auto">
@@ -75,7 +110,6 @@ function StockInputTable({ items, stockData, type, onStockUpdate, onStockDelete 
           <TableHeader>
             <TableRow>
               <TableHead className='w-[60%]'>Item</TableHead>
-              <TableHead>Category</TableHead>
               <TableHead className="text-right">Quantity</TableHead>
               <TableHead className="w-[50px]"><span className='sr-only'>Actions</span></TableHead>
             </TableRow>
@@ -86,18 +120,16 @@ function StockInputTable({ items, stockData, type, onStockUpdate, onStockDelete 
                 (i: Item) => i.id === stockItem.itemId
               );
               return (
-                <TableRow key={stockItem.itemId}>
+                <TableRow key={stockItem.id}>
                   <TableCell className="font-medium flex items-center gap-3 whitespace-nowrap">
-                    {item?.icon && <item.icon className="h-5 w-5 text-muted-foreground"/>}
                     {item?.name || 'Unknown'}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">{item?.category}</TableCell>
                   <TableCell className="text-right">
                     <Input
                       type="number"
-                      defaultValue={stockItem[type] > 0 ? stockItem[type] : ''}
+                      value={stockItem[type] > 0 ? stockItem[type] : ''}
                       onChange={(e) =>
-                        handleStockChange(stockItem.itemId, e.target.value)
+                        handleStockChange(stockItem.id, e.target.value)
                       }
                       className="ml-auto max-w-[100px] text-right"
                       placeholder="0"
@@ -119,7 +151,7 @@ function StockInputTable({ items, stockData, type, onStockUpdate, onStockDelete 
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => onStockDelete(stockItem.itemId)} variant="destructive">
+                                <AlertDialogAction onClick={() => onStockDelete(stockItem.id)} variant="destructive">
                                      Delete
                                 </AlertDialogAction>
                             </AlertDialogFooter>
@@ -137,21 +169,11 @@ function StockInputTable({ items, stockData, type, onStockUpdate, onStockDelete 
 }
 
 export default function StockPage() {
-  const { items, stock, setStock } = useDataContext();
-  const { toast } = useToast();
+  const { items, stock } = useDataContext();
 
-  const handleStockUpdate = (updatedStock: StockRecord[]) => {
-      setStock(updatedStock);
-  };
-
-  const handleStockDelete = (itemId: string) => {
-      setStock(prev => prev.filter(s => s.itemId !== itemId));
-      toast({
-          title: 'Stock Record Deleted',
-          description: 'The stock record has been removed.',
-          variant: 'destructive',
-      });
-  };
+  if (!items || !stock) {
+      return <div>Loading...</div>
+  }
 
   return (
     <Tabs defaultValue="opening" className="w-full">
@@ -163,18 +185,14 @@ export default function StockPage() {
         <StockInputTable 
             stockData={stock} 
             items={items}
-            type="opening" 
-            onStockUpdate={handleStockUpdate} 
-            onStockDelete={handleStockDelete} 
+            type="openingStock" 
         />
       </TabsContent>
       <TabsContent value="closing" className='mt-6'>
         <StockInputTable 
             stockData={stock} 
             items={items}
-            type="closing" 
-            onStockUpdate={handleStockUpdate}
-            onStockDelete={handleStockDelete}
+            type="closingStock"
         />
       </TabsContent>
     </Tabs>
