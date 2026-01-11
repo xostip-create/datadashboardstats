@@ -79,7 +79,6 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <Sidebar>
-        <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
         <SidebarHeader>
           <Logo />
         </SidebarHeader>
