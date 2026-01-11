@@ -2,9 +2,9 @@
 
 import * as React from 'react';
 import { Save, Trash2 } from 'lucide-react';
-import { stock, inventory } from '@/lib/data';
+import { useDataContext } from '@/lib/data-provider';
 import type { StockRecord, Item } from '@/lib/data';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -23,15 +23,17 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 
 type StockInputProps = {
   stockData: StockRecord[];
+  items: Item[];
   type: 'opening' | 'closing';
   onStockUpdate: (updatedStock: StockRecord[]) => void;
   onStockDelete: (itemId: string) => void;
 };
 
-function StockInputTable({ stockData, type, onStockUpdate, onStockDelete }: StockInputProps) {
+function StockInputTable({ items, stockData, type, onStockUpdate, onStockDelete }: StockInputProps) {
   const { toast } = useToast();
   const [localStock, setLocalStock] = React.useState(stockData);
 
@@ -80,7 +82,7 @@ function StockInputTable({ stockData, type, onStockUpdate, onStockDelete }: Stoc
           </TableHeader>
           <TableBody>
             {localStock.map((stockItem) => {
-              const item = inventory.find(
+              const item = items.find(
                 (i: Item) => i.id === stockItem.itemId
               );
               return (
@@ -135,15 +137,15 @@ function StockInputTable({ stockData, type, onStockUpdate, onStockDelete }: Stoc
 }
 
 export default function StockPage() {
-  const [stockData, setStockData] = React.useState(stock);
+  const { items, stock, setStock } = useDataContext();
   const { toast } = useToast();
 
   const handleStockUpdate = (updatedStock: StockRecord[]) => {
-      setStockData(updatedStock);
+      setStock(updatedStock);
   };
 
   const handleStockDelete = (itemId: string) => {
-      setStockData(prev => prev.filter(s => s.itemId !== itemId));
+      setStock(prev => prev.filter(s => s.itemId !== itemId));
       toast({
           title: 'Stock Record Deleted',
           description: 'The stock record has been removed.',
@@ -159,7 +161,8 @@ export default function StockPage() {
       </TabsList>
       <TabsContent value="opening" className='mt-6'>
         <StockInputTable 
-            stockData={stockData} 
+            stockData={stock} 
+            items={items}
             type="opening" 
             onStockUpdate={handleStockUpdate} 
             onStockDelete={handleStockDelete} 
@@ -167,7 +170,8 @@ export default function StockPage() {
       </TabsContent>
       <TabsContent value="closing" className='mt-6'>
         <StockInputTable 
-            stockData={stockData} 
+            stockData={stock} 
+            items={items}
             type="closing" 
             onStockUpdate={handleStockUpdate}
             onStockDelete={handleStockDelete}
@@ -176,5 +180,3 @@ export default function StockPage() {
     </Tabs>
   );
 }
-
-    

@@ -28,6 +28,7 @@ import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { SheetTitle } from '@/components/ui/sheet';
+import { DataProvider } from '@/lib/data-provider';
 
 const menuItems = [
   {
@@ -152,5 +153,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
 
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-    return <AppLayoutContent>{children}</AppLayoutContent>;
+    return (
+        <DataProvider>
+            <AppLayoutContent>{children}</AppLayoutContent>
+        </DataProvider>
+    );
 }

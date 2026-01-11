@@ -15,9 +15,9 @@ import {
   Beef,
   Bot,
 } from 'lucide-react';
-import { inventory, stock } from '@/lib/data';
+import { useDataContext } from '@/lib/data-provider';
 import type { Item, StockRecord } from '@/lib/data';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -66,6 +66,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 
 const itemFormSchema = z.object({
   name: z.string().min(1, 'Item name is required.'),
@@ -77,7 +78,7 @@ type ItemFormValues = z.infer<typeof itemFormSchema>;
 
 export default function ItemsPage() {
   const { toast } = useToast();
-  const [items, setItems] = React.useState<Item[]>(inventory);
+  const { items, setItems, addStockRecord } = useDataContext();
   const [editingItem, setEditingItem] = React.useState<Item | null>(null);
   const [isModalOpen, setModalOpen] = React.useState(false);
 
@@ -132,7 +133,7 @@ export default function ItemsPage() {
         opening: 0,
         closing: 0,
       };
-      stock.push(newStockRecord);
+      addStockRecord(newStockRecord);
       toast({
         title: 'Item Created',
         description: `${data.name} has been added to the inventory.`,
@@ -310,5 +311,3 @@ export default function ItemsPage() {
     </div>
   );
 }
-
-    

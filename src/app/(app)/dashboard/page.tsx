@@ -16,9 +16,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { getSalesByItem, getStockSummary, sales } from '@/lib/data';
+import { useDataContext } from '@/lib/data-provider';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import type { Item, Sale } from '@/lib/data';
 
 function NairaIcon({ className }: { className?: string }) {
     return (
@@ -40,6 +41,49 @@ function NairaIcon({ className }: { className?: string }) {
   }
 
 export default function DashboardPage() {
+  const { items, sales, stock } = useDataContext();
+
+  const getSalesByItem = React.useCallback(() => {
+    const salesByItem = new Map<string, { quantity: number; total: number }>();
+    for (const sale of sales) {
+      const existing = salesByItem.get(sale.itemId) || { quantity: 0, total: 0 };
+      salesByItem.set(sale.itemId, {
+        quantity: existing.quantity + sale.quantity,
+        total: existing.total + sale.total,
+      });
+    }
+    return Array.from(salesByItem.entries()).map(([itemId, data]) => {
+      const item = items.find(i => i.id === itemId);
+      return {
+        name: item?.name || 'Unknown',
+        quantity: data.quantity,
+        total: data.total,
+      };
+    });
+  }, [sales, items]);
+  
+  const getStockSummary = React.useCallback(() => {
+      const salesByItem = getSalesByItem();
+      return stock.map(stockItem => {
+          const item = items.find(i => i.id === stockItem.itemId);
+          const saleInfo = salesByItem.find(s => s.name === item?.name);
+          const sold = saleInfo?.quantity || 0;
+          const expected = stockItem.opening - sold;
+          const discrepancy = stockItem.closing - expected;
+  
+          return {
+              id: item?.id || '',
+              name: item?.name || 'Unknown',
+              icon: item?.icon,
+              opening: stockItem.opening,
+              sold,
+              expected,
+              closing: stockItem.closing,
+              discrepancy,
+          };
+      });
+  }, [stock, items, getSalesByItem]);
+
   const salesSummary = getSalesByItem();
   const stockSummary = getStockSummary();
 
