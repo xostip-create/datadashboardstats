@@ -66,7 +66,9 @@ type NewItemFormValues = z.infer<typeof newItemSchema>;
 function FormattedTime({ date }: { date: Date }) {
     const [time, setTime] = React.useState('');
     React.useEffect(() => {
-        setTime(date.toLocaleTimeString());
+        if (date) {
+            setTime(date.toLocaleTimeString());
+        }
     }, [date]);
     return <>{time}</>;
 }
@@ -216,7 +218,7 @@ export default function SalesPage() {
                 control={salesForm.control}
                 name="quantity"
                 render={({ field }) => (
-                  <FormItem className='flex-1 w-full md:max-w-[120px]'>
+                  <FormItem className='w-full md:max-w-[120px]'>
                     <FormLabel>Quantity</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="1" {...field} />
@@ -225,7 +227,7 @@ export default function SalesPage() {
                   </FormItem>
                 )}
               />
-              <div className="flex w-full md:w-auto gap-2">
+              <div className="flex w-full flex-col sm:flex-row md:w-auto gap-2">
                  <Dialog open={isItemDialogOpen} onOpenChange={setItemDialogOpen}>
                     <DialogTrigger asChild>
                         <Button variant="outline" className='w-full'>
@@ -309,7 +311,7 @@ export default function SalesPage() {
           <CardTitle>Today's Sales</CardTitle>
           <CardDescription>A list of all transactions for today.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className='overflow-x-auto'>
           <Table>
             <TableHeader>
               <TableRow>
@@ -324,7 +326,7 @@ export default function SalesPage() {
                 const item = inventoryData.find((i) => i.id === sale.itemId);
                 return (
                   <TableRow key={sale.id}>
-                    <TableCell className="font-medium">{item?.name || 'Unknown'}</TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">{item?.name || 'Unknown'}</TableCell>
                     <TableCell className="text-right">{sale.quantity}</TableCell>
                     <TableCell className="text-right">₦{sale.total.toFixed(2)}</TableCell>
                     <TableCell className="text-right">

@@ -111,7 +111,7 @@ export default function DashboardPage() {
           <CardHeader>
             <CardTitle>Stock Summary</CardTitle>
           </CardHeader>
-          <CardContent className='overflow-auto max-h-[356px]'>
+          <CardContent className='overflow-x-auto max-h-[356px]'>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -125,7 +125,7 @@ export default function DashboardPage() {
               <TableBody>
                 {stockSummary.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
                     <TableCell className="text-right">{item.opening}</TableCell>
                     <TableCell className="text-right">{item.sold}</TableCell>
                     <TableCell className="text-right">{item.closing > 0 ? item.closing : '-'}</TableCell>

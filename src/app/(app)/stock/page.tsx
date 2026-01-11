@@ -54,16 +54,16 @@ function StockInputTable({ stockData, type }: StockInputProps) {
 
   return (
     <Card>
-       <CardHeader className='flex-row items-center justify-between'>
+       <CardHeader className='flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
         <div>
             <CardTitle>Update {type.charAt(0).toUpperCase() + type.slice(1)} Stock</CardTitle>
             <CardDescription>Enter the stock count for each item.</CardDescription>
         </div>
-        <Button onClick={handleSave}>
+        <Button onClick={handleSave} className="w-full sm:w-auto">
           <Save className="mr-2 h-4 w-4" /> Save {type.charAt(0).toUpperCase() + type.slice(1)}
         </Button>
       </CardHeader>
-      <CardContent>
+      <CardContent className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -79,11 +79,11 @@ function StockInputTable({ stockData, type }: StockInputProps) {
               );
               return (
                 <TableRow key={stockItem.itemId}>
-                  <TableCell className="font-medium flex items-center gap-3">
+                  <TableCell className="font-medium flex items-center gap-3 whitespace-nowrap">
                     {item?.icon && <item.icon className="h-5 w-5 text-muted-foreground"/>}
                     {item?.name || 'Unknown'}
                   </TableCell>
-                  <TableCell className="text-right">{item?.category}</TableCell>
+                  <TableCell className="text-right whitespace-nowrap">{item?.category}</TableCell>
                   <TableCell className="text-right">
                     <Input
                       type="number"

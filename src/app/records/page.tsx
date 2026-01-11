@@ -26,7 +26,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 function FormattedTime({ date }: { date: Date }) {
     const [time, setTime] = React.useState('');
     React.useEffect(() => {
-        setTime(date.toLocaleTimeString());
+        if (date) {
+            setTime(date.toLocaleTimeString());
+        }
     }, [date]);
     return <>{time}</>;
 }
@@ -57,7 +59,7 @@ export default function RecordsPage() {
                   A public view of all sales transactions.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -72,13 +74,13 @@ export default function RecordsPage() {
                       const item = inventory.find((i) => i.id === sale.itemId);
                       return (
                         <TableRow key={sale.id}>
-                          <TableCell className="font-medium">
+                          <TableCell className="font-medium whitespace-nowrap">
                             {item?.name || 'Unknown'}
                           </TableCell>
                           <TableCell className="text-right">
                             {sale.quantity}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-right whitespace-nowrap">
                             ₦{sale.total.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
@@ -100,7 +102,7 @@ export default function RecordsPage() {
                   A public view of daily stock levels and discrepancies.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -115,7 +117,7 @@ export default function RecordsPage() {
                   <TableBody>
                     {stockSummary.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.name}</TableCell>
+                        <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
                         <TableCell className="text-right">{item.opening}</TableCell>
                         <TableCell className="text-right">{item.sold}</TableCell>
                         <TableCell className="text-right">{item.expected}</TableCell>
