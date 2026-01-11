@@ -8,7 +8,7 @@ import { Check, ChevronsUpDown, PlusCircle, Beer, Wine, GlassWater, Beef, Bot, M
 
 import { inventory, sales } from '@/lib/data';
 import type { Item, Sale } from '@/lib/data';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -323,7 +323,7 @@ export default function SalesPage() {
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteSale(sale.id)} className={cn(Button({variant: 'destructive'}))}>
+                                        <AlertDialogAction onClick={() => handleDeleteSale(sale.id)} className={cn(buttonVariants({variant: 'destructive'}))}>
                                             Delete
                                         </AlertDialogAction>
                                         </AlertDialogFooter>
