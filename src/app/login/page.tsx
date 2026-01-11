@@ -23,9 +23,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Logo } from '@/components/logo';
-import { useToast } from '@/hooks/use-toast';
-import { useAuth, useUser } from '@/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 
 const loginSchema = z.object({
   email: z.string().email({ message: 'Please enter a valid email address.' }),
@@ -36,9 +33,6 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
-  const { toast } = useToast();
-  const auth = useAuth();
-  const { user, isUserLoading } = useUser();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -48,39 +42,10 @@ export default function LoginPage() {
     },
   });
 
-  React.useEffect(() => {
-    if (!isUserLoading && user) {
-      router.push('/dashboard');
-    }
-  }, [user, isUserLoading, router]);
-
   const onSubmit = async (data: LoginFormValues) => {
-    const { email, password } = data;
-    if (!auth) return;
-
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/dashboard');
-    } catch (error: any) {
-        let description = 'An unexpected error occurred. Please try again.';
-        if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
-            description = 'Incorrect email or password. Please try again.';
-        }
-        toast({
-            variant: 'destructive',
-            title: 'Login Failed',
-            description,
-        });
-    }
+    // Mock login, just navigate to dashboard
+    router.push('/dashboard');
   };
-
-  if (isUserLoading || user) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">

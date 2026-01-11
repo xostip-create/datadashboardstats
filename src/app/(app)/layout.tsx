@@ -28,8 +28,6 @@ import { Logo } from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DataProvider } from '@/lib/data-provider';
-import { useAuth, useUser } from '@/firebase';
-import { signOut } from 'firebase/auth';
 import { SheetTitle } from '@/components/ui/sheet';
 
 const menuItems = [
@@ -58,29 +56,10 @@ const menuItems = [
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const auth = useAuth();
-  const { user, isUserLoading } = useUser();
-
-  React.useEffect(() => {
-    if (!isUserLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, isUserLoading, router]);
 
   const handleLogout = async () => {
-    if (auth) {
-      await signOut(auth);
-      router.push('/login');
-    }
+    router.push('/login');
   };
-
-  if (isUserLoading || !user) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <p>Loading...</p>
-      </div>
-    );
-  }
 
   return (
     <SidebarProvider>
@@ -109,17 +88,17 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <SidebarFooter>
           <div className="flex items-center gap-3">
             <Avatar className="h-9 w-9">
-              <AvatarImage src={user.photoURL || "https://picsum.photos/seed/avatar/100/100"} />
+              <AvatarImage src={"https://picsum.photos/seed/avatar/100/100"} />
               <AvatarFallback>
-                {user.email?.charAt(0).toUpperCase() || 'U'}
+                A
               </AvatarFallback>
             </Avatar>
             <div className="flex flex-col text-sm">
               <span className="font-semibold text-sidebar-foreground">
-                {user.displayName || 'Bar Owner'}
+                Admin
               </span>
               <span className="text-xs text-sidebar-foreground/70">
-                {user?.email}
+                admin@barbook.com
               </span>
             </div>
             <Button
