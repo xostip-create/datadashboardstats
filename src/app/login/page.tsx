@@ -5,11 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
-import {
-  useAuth,
-  useUser,
-  initiateEmailSignIn,
-} from '@/firebase';
 import { Button } from '@/components/ui/button';
 import {
   Form,
@@ -39,9 +34,9 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
-  const auth = useAuth();
-  const { user, isUserLoading } = useUser();
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = React.useState(true);
+
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -52,40 +47,22 @@ export default function LoginPage() {
   });
 
   React.useEffect(() => {
-    if (!isUserLoading && user) {
+    const user = sessionStorage.getItem('barbook-user');
+    if (user) {
       router.push('/dashboard');
+    } else {
+      setIsLoading(false);
     }
-  }, [user, isUserLoading, router]);
+  }, [router]);
 
-  const onSubmit = async (data: LoginFormValues) => {
+  const onSubmit = (data: LoginFormValues) => {
     const { email, password } = data;
     if (
       email === 'eahunanya116@gmail.com' &&
       password === 'emmanuel1234@'
     ) {
-      try {
-        await initiateEmailSignIn(auth, email, password);
-        // The onAuthStateChanged listener in the provider will handle the redirect
-      } catch (error: any) {
-         if (error.code === 'auth/user-not-found') {
-            // Create user if it does not exist
-            try {
-                await auth.createUserWithEmailAndPassword(email, password);
-            } catch(e) {
-                toast({
-                    variant: 'destructive',
-                    title: 'Login Failed',
-                    description: 'Could not create user. Please try again.',
-                });
-            }
-         } else {
-            toast({
-                variant: 'destructive',
-                title: 'Login Failed',
-                description: 'Incorrect email or password. Please try again.',
-            });
-         }
-      }
+      sessionStorage.setItem('barbook-user', JSON.stringify({ email }));
+      router.push('/dashboard');
     } else {
       toast({
         variant: 'destructive',
@@ -95,7 +72,7 @@ export default function LoginPage() {
     }
   };
 
-  if (isUserLoading || user) {
+  if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Loading...</p>

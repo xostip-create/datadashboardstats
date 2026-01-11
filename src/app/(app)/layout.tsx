@@ -24,13 +24,8 @@ import {
   SidebarInset,
 } from '@/components/ui/sidebar';
 import { Logo } from '@/components/logo';
-import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  useAuth,
-  useUser,
-} from '@/firebase';
 
 const menuItems = [
   {
@@ -53,21 +48,26 @@ const menuItems = [
 function AppLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const auth = useAuth();
-  const { user, isUserLoading } = useUser();
+  const [user, setUser] = React.useState<{email: string} | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
 
   React.useEffect(() => {
-    if (!isUserLoading && !user) {
+    const user = sessionStorage.getItem('barbook-user');
+    if (user) {
+      setUser(JSON.parse(user));
+    } else {
       router.push('/login');
     }
-  }, [user, isUserLoading, router]);
+    setIsLoading(false);
+  }, [router]);
 
   const handleLogout = () => {
-    auth.signOut();
+    sessionStorage.removeItem('barbook-user');
     router.push('/login');
   };
 
-  if (isUserLoading || !user) {
+  if (isLoading || !user) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Loading...</p>
