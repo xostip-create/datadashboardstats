@@ -7,6 +7,7 @@ import {
   Boxes,
   LayoutDashboard,
   LogOut,
+  Package,
   ShoppingCart,
   UserCircle,
 } from 'lucide-react';
@@ -43,6 +44,11 @@ const menuItems = [
     href: '/stock',
     label: 'Stock',
     icon: Boxes,
+  },
+  {
+    href: '/items',
+    label: 'Items',
+    icon: Package,
   },
 ];
 
@@ -128,7 +134,9 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
       <SidebarInset>
         <header className="flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-sm sm:px-6">
           <div className="md:hidden">
-            <SidebarTrigger />
+             <SidebarTrigger>
+                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+             </SidebarTrigger>
           </div>
           <div className="ml-auto">
             <Button variant="ghost" size="icon">

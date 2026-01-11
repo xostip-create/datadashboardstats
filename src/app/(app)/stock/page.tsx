@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { Save } from 'lucide-react';
+import { Save, Trash2 } from 'lucide-react';
 import { stock, inventory } from '@/lib/data';
 import type { StockRecord, Item } from '@/lib/data';
 import { Button } from '@/components/ui/button';
@@ -22,15 +22,23 @@ import {
 } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
 
 type StockInputProps = {
   stockData: StockRecord[];
   type: 'opening' | 'closing';
+  onStockUpdate: (updatedStock: StockRecord[]) => void;
+  onStockDelete: (itemId: string) => void;
 };
 
-function StockInputTable({ stockData, type }: StockInputProps) {
+function StockInputTable({ stockData, type, onStockUpdate, onStockDelete }: StockInputProps) {
   const { toast } = useToast();
   const [localStock, setLocalStock] = React.useState(stockData);
+
+  React.useEffect(() => {
+    setLocalStock(stockData);
+  }, [stockData]);
 
   const handleStockChange = (itemId: string, value: string) => {
     const newStock = localStock.map((item) => {
@@ -43,9 +51,7 @@ function StockInputTable({ stockData, type }: StockInputProps) {
   };
 
   const handleSave = () => {
-    // Here you would typically save the data to your backend.
-    // For now, we just show a toast notification.
-    console.log(`Saving ${type} stock:`, localStock);
+    onStockUpdate(localStock);
     toast({
       title: 'Stock Saved',
       description: `The ${type} stock levels have been updated.`,
@@ -68,8 +74,9 @@ function StockInputTable({ stockData, type }: StockInputProps) {
           <TableHeader>
             <TableRow>
               <TableHead className='w-[60%]'>Item</TableHead>
-              <TableHead className="text-right">Category</TableHead>
+              <TableHead>Category</TableHead>
               <TableHead className="text-right">Quantity</TableHead>
+              <TableHead className="w-[50px]"><span className='sr-only'>Actions</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -83,7 +90,7 @@ function StockInputTable({ stockData, type }: StockInputProps) {
                     {item?.icon && <item.icon className="h-5 w-5 text-muted-foreground"/>}
                     {item?.name || 'Unknown'}
                   </TableCell>
-                  <TableCell className="text-right whitespace-nowrap">{item?.category}</TableCell>
+                  <TableCell className="whitespace-nowrap">{item?.category}</TableCell>
                   <TableCell className="text-right">
                     <Input
                       type="number"
@@ -94,6 +101,29 @@ function StockInputTable({ stockData, type }: StockInputProps) {
                       className="ml-auto max-w-[100px] text-right"
                       placeholder="0"
                     />
+                  </TableCell>
+                  <TableCell>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
+                                <Trash2 className="h-4 w-4"/>
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete the stock record for this item.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => onStockDelete(stockItem.itemId)} className={cn(Button({variant: 'destructive'}))}>
+                                     Delete
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                   </TableCell>
                 </TableRow>
               );
@@ -106,6 +136,22 @@ function StockInputTable({ stockData, type }: StockInputProps) {
 }
 
 export default function StockPage() {
+  const [stockData, setStockData] = React.useState(stock);
+  const { toast } = useToast();
+
+  const handleStockUpdate = (updatedStock: StockRecord[]) => {
+      setStockData(updatedStock);
+  };
+
+  const handleStockDelete = (itemId: string) => {
+      setStockData(prev => prev.filter(s => s.itemId !== itemId));
+      toast({
+          title: 'Stock Record Deleted',
+          description: 'The stock record has been removed.',
+          variant: 'destructive',
+      });
+  };
+
   return (
     <Tabs defaultValue="opening" className="w-full">
       <TabsList className="grid w-full grid-cols-2 max-w-sm">
@@ -113,10 +159,20 @@ export default function StockPage() {
         <TabsTrigger value="closing">Closing Stock</TabsTrigger>
       </TabsList>
       <TabsContent value="opening" className='mt-6'>
-        <StockInputTable stockData={stock} type="opening" />
+        <StockInputTable 
+            stockData={stockData} 
+            type="opening" 
+            onStockUpdate={handleStockUpdate} 
+            onStockDelete={handleStockDelete} 
+        />
       </TabsContent>
       <TabsContent value="closing" className='mt-6'>
-        <StockInputTable stockData={stock} type="closing" />
+        <StockInputTable 
+            stockData={stockData} 
+            type="closing" 
+            onStockUpdate={handleStockUpdate}
+            onStockDelete={handleStockDelete}
+        />
       </TabsContent>
     </Tabs>
   );
