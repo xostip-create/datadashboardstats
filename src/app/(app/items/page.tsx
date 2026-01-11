@@ -292,7 +292,7 @@ export default function ItemsPage() {
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className={cn(buttonVariants({variant: 'destructive'}))}>
+                                <AlertDialogAction onClick={() => handleDeleteItem(item.id)} variant="destructive">
                                     Delete
                                 </AlertDialogAction>
                                 </AlertDialogFooter>
@@ -311,5 +311,3 @@ export default function ItemsPage() {
     </div>
   );
 }
-
-    

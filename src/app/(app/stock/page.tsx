@@ -118,7 +118,7 @@ function StockInputTable({ stockData, type, onStockUpdate, onStockDelete }: Stoc
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => onStockDelete(stockItem.itemId)} className={cn(buttonVariants({variant: 'destructive'}))}>
+                                <AlertDialogAction onClick={() => onStockDelete(stockItem.itemId)} variant="destructive">
                                      Delete
                                 </AlertDialogAction>
                             </AlertDialogFooter>
