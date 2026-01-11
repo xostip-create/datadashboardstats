@@ -4,7 +4,7 @@ import * as React from 'react';
 import { Save, Trash2 } from 'lucide-react';
 import { stock, inventory } from '@/lib/data';
 import type { StockRecord, Item } from '@/lib/data';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -23,7 +23,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
 
 type StockInputProps = {
   stockData: StockRecord[];
@@ -118,7 +117,7 @@ function StockInputTable({ stockData, type, onStockUpdate, onStockDelete }: Stoc
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => onStockDelete(stockItem.itemId)} className={cn(buttonVariants({variant: 'destructive'}))}>
+                                <AlertDialogAction onClick={() => onStockDelete(stockItem.itemId)} variant="destructive">
                                      Delete
                                 </AlertDialogAction>
                             </AlertDialogFooter>

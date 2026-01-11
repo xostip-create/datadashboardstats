@@ -323,7 +323,7 @@ export default function SalesPage() {
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteSale(sale.id)} className={cn(buttonVariants({variant: 'destructive'}))}>
+                                        <AlertDialogAction onClick={() => handleDeleteSale(sale.id)} variant="destructive">
                                             Delete
                                         </AlertDialogAction>
                                         </AlertDialogFooter>

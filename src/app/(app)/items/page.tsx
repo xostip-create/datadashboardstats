@@ -66,7 +66,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
 
 const itemFormSchema = z.object({
   name: z.string().min(1, 'Item name is required.'),
@@ -292,7 +291,7 @@ export default function ItemsPage() {
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className={cn(Button({variant: 'destructive'}))}>
+                                <AlertDialogAction onClick={() => handleDeleteItem(item.id)} variant="destructive">
                                     Delete
                                 </AlertDialogAction>
                                 </AlertDialogFooter>
@@ -311,3 +310,5 @@ export default function ItemsPage() {
     </div>
   );
 }
+
+    
