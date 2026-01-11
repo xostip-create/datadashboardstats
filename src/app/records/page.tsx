@@ -23,6 +23,14 @@ import { Logo } from '@/components/logo';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+function FormattedTime({ date }: { date: Date }) {
+    const [time, setTime] = React.useState('');
+    React.useEffect(() => {
+        setTime(date.toLocaleTimeString());
+    }, [date]);
+    return <>{time}</>;
+}
+
 export default function RecordsPage() {
   const router = useRouter();
   const stockSummary = getStockSummary();
@@ -74,7 +82,7 @@ export default function RecordsPage() {
                             ₦{sale.total.toFixed(2)}
                           </TableCell>
                           <TableCell className="text-right">
-                            {sale.timestamp.toLocaleTimeString()}
+                            <FormattedTime date={sale.timestamp} />
                           </TableCell>
                         </TableRow>
                       );

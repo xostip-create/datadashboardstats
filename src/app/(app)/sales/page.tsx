@@ -49,6 +49,15 @@ const salesFormSchema = z.object({
 
 type SalesFormValues = z.infer<typeof salesFormSchema>;
 
+function FormattedTime({ date }: { date: Date }) {
+    const [time, setTime] = React.useState('');
+    React.useEffect(() => {
+        setTime(date.toLocaleTimeString());
+    }, [date]);
+    return <>{time}</>;
+}
+
+
 export default function SalesPage() {
   const { toast } = useToast();
   const [salesData, setSalesData] = React.useState<Sale[]>(sales);
@@ -164,7 +173,7 @@ export default function SalesPage() {
                     <TableCell className="text-right">{sale.quantity}</TableCell>
                     <TableCell className="text-right">₦{sale.total.toFixed(2)}</TableCell>
                     <TableCell className="text-right">
-                      {sale.timestamp.toLocaleTimeString()}
+                      <FormattedTime date={sale.timestamp} />
                     </TableCell>
                   </TableRow>
                 );
