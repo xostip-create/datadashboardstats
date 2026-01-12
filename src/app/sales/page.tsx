@@ -4,11 +4,10 @@ import * as React from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Check, ChevronsUpDown, PlusCircle, Beer, Wine, GlassWater, Beef, Bot, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Check, ChevronsUpDown, PlusCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 
-import { inventory, sales } from '@/lib/data';
 import type { Item, Sale } from '@/lib/data';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -53,6 +52,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { useDataContext } from '@/lib/data-provider';
+import { useFirestore } from '@/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 
 
 const salesFormSchema = z.object({
@@ -62,11 +64,12 @@ const salesFormSchema = z.object({
 
 type SalesFormValues = z.infer<typeof salesFormSchema>;
 
-function FormattedTime({ date }: { date: Date | string }) {
+function FormattedTime({ date }: { date: any }) {
     const [time, setTime] = React.useState('');
     React.useEffect(() => {
         if (date) {
-            setTime(new Date(date).toLocaleTimeString());
+            const d = date.toDate ? date.toDate() : new Date(date);
+            setTime(d.toLocaleTimeString());
         }
     }, [date]);
     return <>{time}</>;
@@ -75,12 +78,12 @@ function FormattedTime({ date }: { date: Date | string }) {
 
 export default function SalesPage() {
   const { toast } = useToast();
-  const [salesData, setSalesData] = React.useState<Sale[]>(sales);
-  const [inventoryData] = React.useState<Item[]>(inventory);
+  const firestore = useFirestore();
+  const { items: inventoryData, sales: salesData } = useDataContext();
+  
   const [isPopoverOpen, setPopoverOpen] = React.useState(false);
-
+  const [isModalOpen, setModalOpen] = React.useState(false);
   const [editingSale, setEditingSale] = React.useState<Sale | null>(null);
-  const [isEditModalOpen, setEditModalOpen] = React.useState(false);
 
 
   const salesForm = useForm<SalesFormValues>({
@@ -95,40 +98,37 @@ export default function SalesPage() {
     if (editingSale) {
         salesForm.setValue('itemId', editingSale.itemId);
         salesForm.setValue('quantity', editingSale.quantity);
-        setEditModalOpen(true);
+        setModalOpen(true);
     } else {
         salesForm.reset({ itemId: '', quantity: 1 });
     }
   }, [editingSale, salesForm]);
 
 
-  function onSaleSubmit(data: SalesFormValues) {
+  async function onSaleSubmit(data: SalesFormValues) {
+    if (!firestore || !inventoryData) return;
+
     const item = inventoryData.find((i) => i.id === data.itemId);
     if (!item) return;
 
     if (editingSale) {
         // Update existing sale
-        const updatedSale: Sale = {
-            ...editingSale,
-            ...data,
-            total: item.price * data.quantity,
-        };
-        setSalesData(prev => prev.map(s => s.id === editingSale.id ? updatedSale : s));
+        const saleRef = doc(firestore, 'sales', editingSale.id);
+        await updateDoc(saleRef, {
+          itemId: data.itemId,
+          quantity: data.quantity,
+        });
         toast({
             title: 'Sale Updated',
             description: `Sale record for ${item.name} has been updated.`,
         });
     } else {
         // Create new sale
-        const newSale: Sale = {
-          id: `sale-${Date.now()}`,
+        await addDoc(collection(firestore, 'sales'), {
           itemId: data.itemId,
           quantity: data.quantity,
-          total: item.price * data.quantity,
-          timestamp: new Date(),
-        };
-
-        setSalesData((prev) => [newSale, ...prev]);
+          saleDate: serverTimestamp(),
+        });
 
         toast({
           title: 'Sale Recorded',
@@ -136,14 +136,14 @@ export default function SalesPage() {
         });
     }
 
-
     salesForm.reset({ itemId: '', quantity: 1 });
     setEditingSale(null);
-    setEditModalOpen(false);
+    setModalOpen(false);
   }
 
-  function handleDeleteSale(saleId: string) {
-    setSalesData(prev => prev.filter(s => s.id !== saleId));
+  async function handleDeleteSale(saleId: string) {
+    if (!firestore) return;
+    await deleteDoc(doc(firestore, 'sales', saleId));
     toast({
         title: 'Sale Deleted',
         description: 'The sale record has been removed.',
@@ -153,19 +153,19 @@ export default function SalesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Log a New Sale</CardTitle>
-          <CardDescription>
-            Select an item and enter the quantity sold.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-           <Dialog open={isEditModalOpen} onOpenChange={(isOpen) => {
+       <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle>Log a New Sale</CardTitle>
+            <CardDescription>
+              Select an item and enter the quantity sold.
+            </CardDescription>
+          </div>
+          <Dialog open={isModalOpen} onOpenChange={(isOpen) => {
                 if (!isOpen) {
                     setEditingSale(null);
                 }
-                setEditModalOpen(isOpen);
+                setModalOpen(isOpen);
             }}>
             <DialogTrigger asChild>
                 <Button>
@@ -199,7 +199,7 @@ export default function SalesPage() {
                                     )}
                                   >
                                     {field.value
-                                      ? inventoryData.find(
+                                      ? inventoryData?.find(
                                           (item) => item.id === field.value
                                         )?.name
                                       : "Select an item to sell"}
@@ -213,7 +213,7 @@ export default function SalesPage() {
                                   <CommandList>
                                     <CommandEmpty>No item found.</CommandEmpty>
                                     <CommandGroup>
-                                      {inventoryData.map((item) => (
+                                      {inventoryData?.map((item) => (
                                         <CommandItem
                                           value={item.id}
                                           key={item.id}
@@ -264,7 +264,7 @@ export default function SalesPage() {
                   </Form>
                 </DialogContent>
             </Dialog>
-        </CardContent>
+        </CardHeader>
       </Card>
 
       <Card>
@@ -284,15 +284,15 @@ export default function SalesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {salesData.map((sale) => {
-                const item = inventoryData.find((i) => i.id === sale.itemId);
+              {salesData?.map((sale) => {
+                const item = inventoryData?.find((i) => i.id === sale.itemId);
                 return (
                   <TableRow key={sale.id}>
                     <TableCell className="font-medium whitespace-nowrap">{item?.name || 'Unknown'}</TableCell>
                     <TableCell className="text-right">{sale.quantity}</TableCell>
-                    <TableCell className="text-right">₦{sale.total.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">₦{(item ? item.unitPrice * sale.quantity : 0).toFixed(2)}</TableCell>
                     <TableCell className="text-right">
-                      <FormattedTime date={sale.timestamp} />
+                      <FormattedTime date={sale.saleDate} />
                     </TableCell>
                     <TableCell>
                         <DropdownMenu>

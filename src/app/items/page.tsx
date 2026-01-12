@@ -15,9 +15,8 @@ import {
   Beef,
   Bot,
 } from 'lucide-react';
-import { inventory, stock } from '@/lib/data';
-import type { Item, StockRecord } from '@/lib/data';
-import { Button, buttonVariants } from '@/components/ui/button';
+import type { Item } from '@/lib/data';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -66,19 +65,22 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
+import { useDataContext } from '@/lib/data-provider';
+import { useFirestore } from '@/firebase';
+import { collection, doc, addDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 
 const itemFormSchema = z.object({
   name: z.string().min(1, 'Item name is required.'),
-  price: z.coerce.number().min(0.01, 'Price must be greater than 0.'),
-  category: z.enum(['Drinks', 'Food']),
+  unitPrice: z.coerce.number().min(0.01, 'Price must be greater than 0.'),
 });
 
 type ItemFormValues = z.infer<typeof itemFormSchema>;
 
 export default function ItemsPage() {
   const { toast } = useToast();
-  const [items, setItems] = React.useState<Item[]>(inventory);
+  const firestore = useFirestore();
+  const { items } = useDataContext();
+
   const [editingItem, setEditingItem] = React.useState<Item | null>(null);
   const [isModalOpen, setModalOpen] = React.useState(false);
 
@@ -86,54 +88,58 @@ export default function ItemsPage() {
     resolver: zodResolver(itemFormSchema),
     defaultValues: {
       name: '',
-      price: 0,
-      category: 'Drinks',
+      unitPrice: 0,
     },
   });
-
-  const iconMap = { Beer, Wine, GlassWater, Beef, Bot };
-
 
   React.useEffect(() => {
     if (editingItem) {
         form.setValue('name', editingItem.name);
-        form.setValue('price', editingItem.price);
-        form.setValue('category', editingItem.category);
+        form.setValue('unitPrice', editingItem.unitPrice);
         setModalOpen(true);
     } else {
-        form.reset({ name: '', price: 0, category: 'Drinks' });
+        form.reset({ name: '', unitPrice: 0 });
     }
   }, [editingItem, form]);
 
-  const onSubmit = (data: ItemFormValues) => {
+  const onSubmit = async (data: ItemFormValues) => {
+    if (!firestore) return;
     if (editingItem) {
       // Update item
-      const updatedItem: Item = {
-        ...editingItem,
-        ...data,
-      };
-      setItems((prev) =>
-        prev.map((item) => (item.id === editingItem.id ? updatedItem : item))
-      );
+      const itemRef = doc(firestore, 'items', editingItem.id);
+      await updateDoc(itemRef, {
+        name: data.name,
+        unitPrice: data.unitPrice,
+      });
+
       toast({
         title: 'Item Updated',
         description: `${data.name} has been updated.`,
       });
     } else {
       // Create new item
-      const newItem: Item = {
-        id: `item-${Date.now()}`,
-        ...data,
-        icon: data.category === 'Drinks' ? Bot : Beef, // Default icons
-      };
-      setItems((prev) => [...prev, newItem]);
-      // Also add a corresponding stock record
-      const newStockRecord: StockRecord = {
-        itemId: newItem.id,
-        opening: 0,
-        closing: 0,
-      };
-      stock.push(newStockRecord);
+      const newItemRef = doc(collection(firestore, 'items'));
+      const today = new Date().toISOString().split('T')[0];
+      const newStockRef = doc(collection(firestore, 'stockLevels'));
+
+      const batch = writeBatch(firestore);
+
+      batch.set(newItemRef, {
+        id: newItemRef.id,
+        name: data.name,
+        unitPrice: data.unitPrice,
+      });
+
+      batch.set(newStockRef, {
+          id: newStockRef.id,
+          itemId: newItemRef.id,
+          date: today,
+          openingStock: 0,
+          closingStock: 0,
+      });
+
+      await batch.commit();
+      
       toast({
         title: 'Item Created',
         description: `${data.name} has been added to the inventory.`,
@@ -143,8 +149,9 @@ export default function ItemsPage() {
     setEditingItem(null);
   };
 
-  const handleDeleteItem = (itemId: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== itemId));
+  const handleDeleteItem = async (itemId: string) => {
+    if (!firestore) return;
+    await deleteDoc(doc(firestore, 'items', itemId));
     toast({
       title: 'Item Deleted',
       description: 'The item has been removed from inventory.',
@@ -201,7 +208,7 @@ export default function ItemsPage() {
                   />
                   <FormField
                     control={form.control}
-                    name="price"
+                    name="unitPrice"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Price</FormLabel>
@@ -212,30 +219,7 @@ export default function ItemsPage() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="category"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Category</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a category" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="Drinks">Drinks</SelectItem>
-                            <SelectItem value="Food">Food</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  
                   <DialogFooter>
                     <Button type="submit">{editingItem ? 'Save Changes' : 'Save Item'}</Button>
                   </DialogFooter>
@@ -249,20 +233,17 @@ export default function ItemsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Item Name</TableHead>
-                <TableHead>Category</TableHead>
                 <TableHead className="text-right">Price</TableHead>
                 <TableHead className="w-[50px]"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {items.map((item) => (
+              {items?.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium whitespace-nowrap flex items-center gap-3">
-                    <item.icon className="h-5 w-5 text-muted-foreground" />
                     {item.name}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">{item.category}</TableCell>
-                  <TableCell className="text-right whitespace-nowrap">₦{item.price.toFixed(2)}</TableCell>
+                  <TableCell className="text-right whitespace-nowrap">₦{item.unitPrice.toFixed(2)}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
