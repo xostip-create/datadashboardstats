@@ -16,13 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/logo';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
-import { collection, query, where, Timestamp } from 'firebase/firestore';
+import { collection, query, where } from 'firebase/firestore';
 import type { Item, Sale, StockLevel } from '@/lib/data';
 import { Package, Search, ShoppingBag } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
@@ -49,7 +47,6 @@ function NairaIcon({ className }: { className?: string }) {
 }
 
 export default function RecordsPage() {
-  const router = useRouter();
   const firestore = useFirestore();
 
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
@@ -181,9 +178,6 @@ export default function RecordsPage() {
     <div className="container mx-auto p-4 sm:p-6">
       <header className="flex items-center justify-between py-4">
         <Logo />
-        <Button variant="outline" onClick={() => router.push('/login')}>
-          Admin Login
-        </Button>
       </header>
       <main className="mt-6">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
