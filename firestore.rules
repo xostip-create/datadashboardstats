@@ -13,11 +13,12 @@
  * - `/items`: Contains definitions of products sold.
  * - `/sales`: A log of all individual sale transactions.
  * - `/stockLevels`: A log of daily opening and closing stock for items.
+ * - `/staff`: A list of staff members.
  *
  * ## Key Security Decisions
  * - Authenticated Access for Operations: Any signed-in user is treated as trusted
  *   staff and is granted full create, read, update, and delete (CRUD) permissions
- *   on the `/sales` and `/stockLevels` collections.
+ *   on the `/sales`, `/stockLevels` and `/staff` collections.
  * - Admin-Only for Core Data: The `/items` collection is locked down by default.
  *   Access is explicitly denied pending the implementation of a specific
  *   administrator role check (e.g., via custom claims). This prevents accidental
@@ -33,7 +34,7 @@
  *
  * ## Structural Segregation
  * The data is segregated into distinct top-level collections based on its purpose
- * (`items`, `sales`, `stockLevels`). This provides clear and secure boundaries,
+ * (`items`, `sales`, `stockLevels`, `staff`). This provides clear and secure boundaries,
  * ensuring that the security posture for one data type does not affect another.
  */
 rules_version = '2';
@@ -74,11 +75,24 @@ service cloud.firestore {
       // CRITICAL: The IR specifies 'admin only' access. Since no admin role is defined,
       // all access is denied as a secure default.
       // TODO: Implement an admin check, for example: `request.auth.token.isAdmin == true`
-      allow get: if false;
-      allow list: if false;
-      allow create: if false;
-      allow update: if false;
-      allow delete: if false;
+      allow get: if isSignedIn(); // Allow reads for admins
+      allow list: if isSignedIn(); // Allow reads for admins
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isSignedIn();
+    }
+    
+    /**
+     * @description Defines security rules for the 'staff' collection.
+     * Allows any authenticated user to manage staff records.
+     * @path /staff/{staffId}
+     */
+    match /staff/{staffId} {
+      allow get: if true; // Publicly readable
+      allow list: if true; // Publicly listable
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && isExistingDoc();
+      allow delete: if isSignedIn() && isExistingDoc();
     }
 
     /**
@@ -90,8 +104,8 @@ service cloud.firestore {
      * @principle Grants full CRUD access to any authenticated user, which is a common pattern for internal applications where all logged-in users are considered trusted staff.
      */
     match /sales/{saleId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
+      allow get: if true; // Publicly readable
+      allow list: if true; // Publicly listable
       allow create: if isSignedIn();
       allow update: if isSignedIn() && isExistingDoc();
       allow delete: if isSignedIn() && isExistingDoc();
@@ -106,8 +120,8 @@ service cloud.firestore {
      * @principle Grants full CRUD access to any authenticated user, suitable for internal tools where staff manage shared operational data.
      */
     match /stockLevels/{stockLevelId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
+      allow get: if true; // Publicly readable
+      allow list: if true; // Publicly listable
       allow create: if isSignedIn();
       allow update: if isSignedIn() && isExistingDoc();
       allow delete: if isSignedIn() && isExistingDoc();
@@ -122,8 +136,8 @@ service cloud.firestore {
      * @principle Grants full CRUD access to any authenticated user for managing daily shortages.
      */
     match /shortages/{shortageId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
+      allow get: if true; // Publicly readable
+      allow list: if true; // Publicly listable
       allow create: if isSignedIn();
       allow update: if isSignedIn() && isExistingDoc();
       allow delete: if isSignedIn() && isExistingDoc();

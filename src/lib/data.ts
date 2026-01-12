@@ -23,3 +23,8 @@ export type Shortage = {
     amount: number;
     shortageDate: any; // Firestore timestamp
 };
+
+export type Staff = {
+  id: string;
+  name: string;
+};

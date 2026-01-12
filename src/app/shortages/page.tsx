@@ -54,21 +54,22 @@ import type { Shortage } from '@/lib/data';
 import { startOfDay, endOfDay } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { STAFF_MEMBERS } from '@/lib/staff';
-
-const shortageFormSchema = z.object({
-  staffName: z.enum(STAFF_MEMBERS as [string, ...string[]], {
-    required_error: "You need to select a staff member."
-  }),
-  amount: z.coerce.number().min(0.01, 'Amount must be greater than 0.'),
-});
-
-type ShortageFormValues = z.infer<typeof shortageFormSchema>;
 
 export default function ShortagesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { shortages } = useDataContext();
+  const { shortages, staff } = useDataContext();
+
+  const staffNames = React.useMemo(() => staff?.map(s => s.name) || [], [staff]);
+
+  const shortageFormSchema = z.object({
+    staffName: z.string({
+      required_error: "You need to select a staff member."
+    }).refine(val => staffNames.includes(val), { message: "Invalid staff member."}),
+    amount: z.coerce.number().min(0.01, 'Amount must be greater than 0.'),
+  });
+  
+  type ShortageFormValues = z.infer<typeof shortageFormSchema>;
 
   const form = useForm<ShortageFormValues>({
     resolver: zodResolver(shortageFormSchema),
@@ -141,6 +142,17 @@ export default function ShortagesPage() {
       }
     }
   };
+  
+  if (!staff || staff.length === 0) {
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>No Staff Found</CardTitle>
+                <CardDescription>Please add staff members in the "Items & Staff" section before logging shortages.</CardDescription>
+            </CardHeader>
+        </Card>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -164,20 +176,20 @@ export default function ShortagesPage() {
                         defaultValue={field.value}
                         className="flex flex-col sm:flex-row gap-4"
                       >
-                        {STAFF_MEMBERS.map(staff => (
-                            <FormItem key={staff} className='flex-1'>
+                        {staffNames.map(staffName => (
+                            <FormItem key={staffName} className='flex-1'>
                                 <FormControl>
-                                    <RadioGroupItem value={staff} id={staff} className='sr-only' />
+                                    <RadioGroupItem value={staffName} id={staffName} className='sr-only' />
                                 </FormControl>
                                 <Label 
-                                    htmlFor={staff}
+                                    htmlFor={staffName}
                                     className={`
                                         flex items-center justify-center p-4 rounded-md border-2 cursor-pointer
-                                        ${field.value === staff ? 'border-primary bg-primary/10' : 'border-muted bg-transparent'}
+                                        ${field.value === staffName ? 'border-primary bg-primary/10' : 'border-muted bg-transparent'}
                                         hover:border-primary/50 transition-colors
                                     `}
                                 >
-                                    {staff}
+                                    {staffName}
                                 </Label>
                             </FormItem>
                         ))}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, ReactNode } from 'react';
-import type { Item, Sale, StockLevel, Shortage } from './data';
+import type { Item, Sale, StockLevel, Shortage, Staff } from './data';
 import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
 import { collection, query, where } from 'firebase/firestore';
 
@@ -10,6 +10,7 @@ interface DataContextType {
   sales: Sale[] | null;
   stock: StockLevel[] | null;
   shortages: Shortage[] | null;
+  staff: Staff[] | null;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -41,8 +42,14 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }, [firestore]);
   const { data: shortages } = useCollection<Shortage>(shortagesQuery);
 
+  const staffQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'staff');
+    }, [firestore]);
+  const { data: staff } = useCollection<Staff>(staffQuery);
+
   return (
-    <DataContext.Provider value={{ items, sales, stock, shortages }}>
+    <DataContext.Provider value={{ items, sales, stock, shortages, staff }}>
       {children}
     </DataContext.Provider>
   );

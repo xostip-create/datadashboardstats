@@ -78,8 +78,7 @@
       "required": [
         "id",
         "itemId",
-        "quantity"
-      ]
+        "quantity"      ]
     },
     "Shortage": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -111,6 +110,23 @@
         "amount",
         "shortageDate"
       ]
+    },
+     "Staff": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Staff",
+      "type": "object",
+      "description": "Represents a staff member.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the staff member."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the staff member."
+        }
+      },
+      "required": ["id", "name"]
     }
   },
   "auth": {
@@ -184,8 +200,24 @@
             }
           ]
         }
+      },
+      {
+        "path": "/staff/{staffId}",
+        "definition": {
+          "entityName": "Staff",
+          "schema": {
+            "$ref": "#/backend/entities/Staff"
+          },
+          "description": "Stores staff member names.",
+          "params": [
+            {
+              "name": "staffId",
+              "description": "The unique identifier of the staff member."
+            }
+          ]
+        }
       }
     ],
-    "reasoning": "The Firestore structure is designed to optimize for the BarBook application's core features: Sales Logging, Opening/Closing Stock Input, and Sales Summaries. It prioritizes authorization independence, clarity, and scalability.\n\n*   `/items`: Stores item definitions. This collection has a homogeneous security posture (admin only).\n*   `/sales/{saleId}`: Stores sale records.  Data is stored without nested data and adheres to the principle of Structural Segregation, as access to sales data is uniform.\n*   `/stockLevels/{stockLevelId}`: Stores stock level records.  Data is stored without nested data and adheres to the principle of Structural Segregation, as access to stock level data is uniform.\n\nThis structure supports the QAPs because `list` operations on each of the collections are secure, and authorization is managed via secure rules.\n\nAuthorization Independence:\n\n*   The structure avoids `get()` calls in security rules, crucial for atomic operations. There are no hierarchical authorizations (e.g., a `sale` document's access depending on an `item`'s attributes)."
+    "reasoning": "The Firestore structure is designed to optimize for the BarBook application's core features: Sales Logging, Opening/Closing Stock Input, and Sales Summaries. It prioritizes authorization independence, clarity, and scalability.\n\n*   `/items`: Stores item definitions. This collection has a homogeneous security posture (admin only).\n*   `/sales/{saleId}`: Stores sale records.  Data is stored without nested data and adheres to the principle of Structural Segregation, as access to sales data is uniform.\n*   `/stockLevels/{stockLevelId}`: Stores stock level records.  Data is stored without nested data and adheres to the principle of Structural Segregation, as access to stock level data is uniform.\n*   `/staff/{staffId}`: Stores staff records. This allows for dynamic management of staff names through the application's UI.\n\nThis structure supports the QAPs because `list` operations on each of the collections are secure, and authorization is managed via secure rules.\n\nAuthorization Independence:\n\n*   The structure avoids `get()` calls in security rules, crucial for atomic operations. There are no hierarchical authorizations (e.g., a `sale` document's access depending on an `item`'s attributes)."
   }
 }

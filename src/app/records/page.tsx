@@ -21,13 +21,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
 import { collection, query, where } from 'firebase/firestore';
-import type { Item, Sale, StockLevel, Shortage } from '@/lib/data';
+import type { Item, Sale, StockLevel, Shortage, Staff } from '@/lib/data';
 import { Package, Search, ShoppingBag, User } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
-import { STAFF_MEMBERS } from '@/lib/staff';
+import { useDataContext } from '@/lib/data-provider';
 
 
 function NairaIcon({ className }: { className?: string }) {
@@ -52,31 +51,20 @@ function NairaIcon({ className }: { className?: string }) {
 type ShortageFilter = 'today' | '7days' | '30days' | 'all';
 
 export default function RecordsPage() {
-  const firestore = useFirestore();
+  const { items, stock, allSales, shortages, staff } = useAllPublicData();
 
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
   const [stockSearchTerm, setStockSearchTerm] = React.useState('');
   const [shortageFilter, setShortageFilter] = React.useState<ShortageFilter>('today');
-  const [selectedStaff, setSelectedStaff] = React.useState<string | null>(STAFF_MEMBERS[0]);
-
-  // Common queries
-  const itemsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'items');
-  }, [firestore]);
-  const { data: items } = useCollection<Item>(itemsQuery);
-
-  const stockLevelsQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'stockLevels');
-  }, [firestore]);
-  const { data: stock } = useCollection<StockLevel>(stockLevelsQuery);
   
-  const shortagesQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'shortages');
-  }, [firestore]);
-  const { data: shortages } = useCollection<Shortage>(shortagesQuery);
+  const staffNames = React.useMemo(() => staff?.map(s => s.name) || [], [staff]);
+  const [selectedStaff, setSelectedStaff] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (staffNames.length > 0 && !selectedStaff) {
+        setSelectedStaff(staffNames[0]);
+    }
+  }, [staffNames, selectedStaff]);
 
 
   // Memoize today's date boundaries to prevent re-renders
@@ -89,22 +77,14 @@ export default function RecordsPage() {
   }, []);
 
 
-  const todaySalesQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return query(
-      collection(firestore, 'sales'),
-      where('saleDate', '>=', todayStart),
-      where('saleDate', '<=', todayEnd)
-    );
-  }, [firestore, todayStart, todayEnd]);
-  const { data: todaySales } = useCollection<Sale>(todaySalesQuery);
+  const todaySales = React.useMemo(() => {
+    if (!allSales) return [];
+    return allSales.filter(sale => {
+      const saleDate = sale.saleDate?.toDate ? sale.saleDate.toDate() : new Date(sale.saleDate);
+      return saleDate >= todayStart && saleDate <= todayEnd;
+    });
+  }, [allSales, todayStart, todayEnd]);
 
-  // Query for all sales (for history tab)
-  const allSalesQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'sales');
-  }, [firestore]);
-  const { data: allSales } = useCollection<Sale>(allSalesQuery);
 
   const getSalesSummary = (salesData: Sale[] | null) => {
     if (!salesData || !items) return [];
@@ -426,14 +406,14 @@ export default function RecordsPage() {
                     <div>
                         <h4 className="text-sm font-medium mb-2">Select Staff</h4>
                         <div className="flex flex-wrap gap-2">
-                            {STAFF_MEMBERS.map(staff => (
+                            {staffNames.map(staffName => (
                                 <Button
-                                    key={staff}
-                                    variant={selectedStaff === staff ? 'default' : 'outline'}
-                                    onClick={() => setSelectedStaff(staff)}
+                                    key={staffName}
+                                    variant={selectedStaff === staffName ? 'default' : 'outline'}
+                                    onClick={() => setSelectedStaff(staffName)}
                                 >
                                     <User className='mr-2 h-4 w-4' />
-                                    {staff}
+                                    {staffName}
                                 </Button>
                             ))}
                         </div>
@@ -458,7 +438,7 @@ export default function RecordsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
-                    {selectedStaff && (
+                    {selectedStaff ? (
                       <>
                         <Card className="mb-4 bg-muted/30">
                             <CardHeader className="p-4">
@@ -497,7 +477,7 @@ export default function RecordsPage() {
                                         {shortagesByDate[date].map(shortage => (
                                             <TableRow key={shortage.id}>
                                                 <TableCell className="font-medium whitespace-nowrap">
-                                                  {format(new Date(shortage.shortageDate.toDate()), 'EEEE, MMMM d, yyyy')}
+                                                  {format(shortage.shortageDate.toDate(), 'EEEE, MMMM d, yyyy')}
                                                 </TableCell>
                                                 <TableCell className="text-right whitespace-nowrap">₦{shortage.amount.toFixed(2)}</TableCell>
                                             </TableRow>
@@ -514,6 +494,10 @@ export default function RecordsPage() {
                             </TableBody>
                         </Table>
                       </>
+                    ) : (
+                        <div className='text-center text-muted-foreground py-12'>
+                            <p>Please add staff members in the admin panel to see shortage records.</p>
+                        </div>
                     )}
                 </CardContent>
             </Card>
@@ -522,4 +506,41 @@ export default function RecordsPage() {
       </main>
     </div>
   );
+}
+
+
+function useAllPublicData() {
+    const firestore = useFirestore();
+
+    const itemsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'items'));
+    }, [firestore]);
+    const { data: items } = useCollection<Item>(itemsQuery);
+
+    const stockLevelsQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'stockLevels'));
+    }, [firestore]);
+    const { data: stock } = useCollection<StockLevel>(stockLevelsQuery);
+    
+    const allSalesQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'sales'));
+    }, [firestore]);
+    const { data: allSales } = useCollection<Sale>(allSalesQuery);
+
+    const shortagesQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'shortages'));
+    }, [firestore]);
+    const { data: shortages } = useCollection<Shortage>(shortagesQuery);
+
+    const staffQuery = useMemoFirebase(() => {
+        if (!firestore) return null;
+        return query(collection(firestore, 'staff'));
+    }, [firestore]);
+    const { data: staff } = useCollection<Staff>(staffQuery);
+
+    return { items, stock, allSales, shortages, staff };
 }

@@ -45,7 +45,7 @@ const menuItems = [
   },
   {
     href: '/items',
-    label: 'Items',
+    label: 'Items & Staff',
     icon: Package,
   },
   {
