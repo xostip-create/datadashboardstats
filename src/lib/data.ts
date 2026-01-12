@@ -16,3 +16,10 @@ export type Sale = {
   quantity: number;
   saleDate: any; // Firestore timestamp
 };
+
+export type Shortage = {
+    id: string;
+    staffName: string;
+    amount: number;
+    shortageDate: any; // Firestore timestamp
+};

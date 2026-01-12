@@ -9,6 +9,7 @@ import {
   Package,
   ShoppingCart,
   UserCircle,
+  Users,
 } from 'lucide-react';
 
 import {
@@ -46,6 +47,11 @@ const menuItems = [
     href: '/items',
     label: 'Items',
     icon: Package,
+  },
+  {
+    href: '/shortages',
+    label: 'Shortages',
+    icon: Users,
   },
 ];
 

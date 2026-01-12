@@ -21,8 +21,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
 import { collection, query, where } from 'firebase/firestore';
-import type { Item, Sale, StockLevel } from '@/lib/data';
-import { Package, Search, ShoppingBag } from 'lucide-react';
+import type { Item, Sale, StockLevel, Shortage } from '@/lib/data';
+import { Package, Search, ShoppingBag, Users } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { Input } from '@/components/ui/input';
 
@@ -51,6 +51,7 @@ export default function RecordsPage() {
 
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
   const [stockSearchTerm, setStockSearchTerm] = React.useState('');
+  const [shortageSearchTerm, setShortageSearchTerm] = React.useState('');
 
   // Common queries
   const itemsQuery = useMemoFirebase(() => {
@@ -64,6 +65,13 @@ export default function RecordsPage() {
     return collection(firestore, 'stockLevels');
   }, [firestore]);
   const { data: stock } = useCollection<StockLevel>(stockLevelsQuery);
+  
+  const shortagesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'shortages');
+  }, [firestore]);
+  const { data: shortages } = useCollection<Shortage>(shortagesQuery);
+
 
   // Memoize today's date boundaries to prevent re-renders
   const { todayStart, todayEnd } = React.useMemo(() => {
@@ -153,6 +161,25 @@ export default function RecordsPage() {
     }, {} as Record<string, Sale[]>);
   }, [allSales, items, salesSearchTerm]);
 
+  const getShortagesGroupedByDate = React.useCallback(() => {
+    if (!shortages) return {};
+    return shortages.reduce((acc, shortage) => {
+        if (shortageSearchTerm && !shortage.staffName.toLowerCase().includes(shortageSearchTerm.toLowerCase())) {
+            return acc;
+        }
+
+        const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
+        const dateKey = format(shortageDate, 'yyyy-MM-dd');
+
+        if (!acc[dateKey]) {
+            acc[dateKey] = [];
+        }
+        acc[dateKey].push(shortage);
+        acc[dateKey].sort((a, b) => (b.shortageDate?.toMillis() ?? 0) - (a.shortageDate?.toMillis() ?? 0));
+        return acc;
+    }, {} as Record<string, Shortage[]>);
+    }, [shortages, shortageSearchTerm]);
+
 
   // Data for summary cards (today only)
   const todaySalesSummary = getSalesSummary(todaySales);
@@ -172,6 +199,9 @@ export default function RecordsPage() {
   
   const salesByDate = getSalesGroupedByDate();
   const sortedSaleDates = Object.keys(salesByDate).sort((a, b) => b.localeCompare(a));
+  
+  const shortagesByDate = getShortagesGroupedByDate();
+  const sortedShortageDates = Object.keys(shortagesByDate).sort((a, b) => b.localeCompare(a));
 
 
   return (
@@ -224,9 +254,10 @@ export default function RecordsPage() {
         </div>
 
         <Tabs defaultValue="sales">
-          <TabsList className="grid w-full grid-cols-2 max-w-sm">
+          <TabsList className="grid w-full grid-cols-3 max-w-sm">
             <TabsTrigger value="sales">Sales Records</TabsTrigger>
             <TabsTrigger value="stock">Stock Summary</TabsTrigger>
+            <TabsTrigger value="shortages">Shortages</TabsTrigger>
           </TabsList>
           <TabsContent value="sales" className="mt-6">
             <Card>
@@ -338,6 +369,58 @@ export default function RecordsPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          <TabsContent value="shortages" className="mt-6">
+            <Card>
+                <CardHeader>
+                <CardTitle>Shortage History</CardTitle>
+                <CardDescription>A public view of all staff shortages, grouped by date.</CardDescription>
+                <div className="relative mt-2">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search by staff name..."
+                        className="pl-8 w-full sm:w-64"
+                        value={shortageSearchTerm}
+                        onChange={(e) => setShortageSearchTerm(e.target.value)}
+                    />
+                </div>
+                </CardHeader>
+                <CardContent className="overflow-x-auto">
+                <Table>
+                    <TableHeader>
+                    <TableRow>
+                        <TableHead>Staff Name</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                    {sortedShortageDates.length > 0 ? (
+                        sortedShortageDates.map(date => (
+                        <React.Fragment key={date}>
+                            <TableRow className="bg-muted/50 hover:bg-muted/50">
+                            <TableCell colSpan={2} className="font-bold text-muted-foreground">
+                                {format(new Date(date), 'EEEE, MMMM d, yyyy')}
+                            </TableCell>
+                            </TableRow>
+                            {shortagesByDate[date].map(shortage => (
+                            <TableRow key={shortage.id}>
+                                <TableCell className="font-medium whitespace-nowrap">{shortage.staffName}</TableCell>
+                                <TableCell className="text-right whitespace-nowrap">₦{shortage.amount.toFixed(2)}</TableCell>
+                            </TableRow>
+                            ))}
+                        </React.Fragment>
+                        ))
+                    ) : (
+                        <TableRow>
+                        <TableCell colSpan={2} className="text-center text-muted-foreground">
+                            {shortageSearchTerm ? `No shortages found for "${shortageSearchTerm}"` : 'No shortages recorded yet.'}
+                        </TableCell>
+                        </TableRow>
+                    )}
+                    </TableBody>
+                </Table>
+                </CardContent>
+            </Card>
+            </TabsContent>
         </Tabs>
       </main>
     </div>

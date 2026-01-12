@@ -80,6 +80,37 @@
         "itemId",
         "quantity"
       ]
+    },
+    "Shortage": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Shortage",
+      "type": "object",
+      "description": "Represents a staff shortage record.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the shortage record."
+        },
+        "staffName": {
+          "type": "string",
+          "description": "Name of the staff member with the shortage."
+        },
+        "amount": {
+          "type": "number",
+          "description": "The shortage amount."
+        },
+        "shortageDate": {
+          "type": "string",
+          "description": "The date of the shortage.",
+          "format": "date"
+        }
+      },
+      "required": [
+        "id",
+        "staffName",
+        "amount",
+        "shortageDate"
+      ]
     }
   },
   "auth": {
@@ -134,6 +165,22 @@
             {
               "name": "stockLevelId",
               "description": "The unique identifier of the stock level record."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/shortages/{shortageId}",
+        "definition": {
+          "entityName": "Shortage",
+          "schema": {
+            "$ref": "#/backend/entities/Shortage"
+          },
+          "description": "Stores staff shortage records.",
+          "params": [
+            {
+              "name": "shortageId",
+              "description": "The unique identifier of the shortage record."
             }
           ]
         }
