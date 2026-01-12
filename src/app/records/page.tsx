@@ -290,7 +290,7 @@ export default function RecordsPage() {
         </div>
 
         <Tabs defaultValue="sales">
-          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 max-w-xs sm:max-w-sm mx-auto sm:mx-0">
+          <TabsList className="grid w-full grid-cols-3 max-w-sm mx-auto sm:mx-0">
             <TabsTrigger value="sales">Sales Records</TabsTrigger>
             <TabsTrigger value="stock">Stock Summary</TabsTrigger>
             <TabsTrigger value="shortages">Shortages</TabsTrigger>
