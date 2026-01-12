@@ -231,13 +231,10 @@ export default function SalesPage() {
                                     <CommandGroup>
                                       {items?.map((item) => (
                                         <CommandItem
-                                          value={item.name}
+                                          value={item.id}
                                           key={item.id}
                                           onSelect={(currentValue) => {
-                                            const selectedItem = items.find(i => i.name.toLowerCase() === currentValue.toLowerCase());
-                                            if(selectedItem) {
-                                                salesForm.setValue("itemId", selectedItem.id);
-                                            }
+                                            salesForm.setValue("itemId", currentValue)
                                             setPopoverOpen(false)
                                           }}
                                         >

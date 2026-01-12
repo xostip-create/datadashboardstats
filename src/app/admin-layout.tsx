@@ -116,7 +116,7 @@ function AppLayoutContent({ children }: { children: React.ReactNode }) {
         <header className="flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-sm sm:px-6">
           <div className="md:hidden">
              <SidebarTrigger>
-                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                {/* <SheetTitle> must be rendered inside a <Sheet> */}
              </SidebarTrigger>
           </div>
           <div className="ml-auto">
