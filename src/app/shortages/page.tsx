@@ -52,9 +52,15 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import type { Shortage } from '@/lib/data';
 import { startOfDay, endOfDay } from 'date-fns';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Label } from '@/components/ui/label';
+
+const STAFF_MEMBERS = ['Staff A', 'Staff B'];
 
 const shortageFormSchema = z.object({
-  staffName: z.string().min(1, 'Staff name is required.'),
+  staffName: z.enum(STAFF_MEMBERS as [string, ...string[]], {
+    required_error: "You need to select a staff member."
+  }),
   amount: z.coerce.number().min(0.01, 'Amount must be greater than 0.'),
 });
 
@@ -67,10 +73,6 @@ export default function ShortagesPage() {
 
   const form = useForm<ShortageFormValues>({
     resolver: zodResolver(shortageFormSchema),
-    defaultValues: {
-      staffName: '',
-      amount: 0,
-    },
   });
 
   const { todayStart, todayEnd } = React.useMemo(() => {
@@ -146,19 +148,41 @@ export default function ShortagesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Log a New Shortage</CardTitle>
-          <CardDescription>Enter the staff member's name and the shortage amount.</CardDescription>
+          <CardDescription>Select a staff member and enter the shortage amount.</CardDescription>
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col sm:flex-row gap-4 sm:items-start">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <FormField
                 control={form.control}
                 name="staffName"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col w-full sm:w-auto sm:flex-1">
-                    <FormLabel>Staff Name</FormLabel>
+                  <FormItem className="space-y-3">
+                    <FormLabel>Select Staff</FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. John Doe" {...field} />
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        className="flex flex-col sm:flex-row gap-4"
+                      >
+                        {STAFF_MEMBERS.map(staff => (
+                            <FormItem key={staff} className='flex-1'>
+                                <FormControl>
+                                    <RadioGroupItem value={staff} id={staff} className='sr-only' />
+                                </FormControl>
+                                <Label 
+                                    htmlFor={staff}
+                                    className={`
+                                        flex items-center justify-center p-4 rounded-md border-2 cursor-pointer
+                                        ${field.value === staff ? 'border-primary bg-primary/10' : 'border-muted bg-transparent'}
+                                        hover:border-primary/50 transition-colors
+                                    `}
+                                >
+                                    {staff}
+                                </Label>
+                            </FormItem>
+                        ))}
+                      </RadioGroup>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -168,7 +192,7 @@ export default function ShortagesPage() {
                 control={form.control}
                 name="amount"
                 render={({ field }) => (
-                  <FormItem className='w-full sm:w-auto'>
+                  <FormItem className='w-full sm:max-w-xs'>
                     <FormLabel>Amount (₦)</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="0.00" {...field} />
@@ -177,8 +201,8 @@ export default function ShortagesPage() {
                   </FormItem>
                 )}
               />
-              <div className="pt-0 sm:pt-6">
-                 <Button type="submit" className="w-full">
+              <div className="pt-2">
+                 <Button type="submit">
                     <PlusCircle className="mr-2 h-4 w-4" />
                     Add Shortage
                 </Button>
