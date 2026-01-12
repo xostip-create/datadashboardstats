@@ -81,15 +81,14 @@
         },
         "closingStock": {
           "type": "number",
-          "description": "The closing stock quantity for the item on the given date."
+          "description": "The closing stock quantity for the item on the given date. This is now calculated automatically."
         }
       },
       "required": [
         "id",
         "itemId",
         "date",
-        "openingStock",
-        "closingStock"
+        "openingStock"
       ]
     }
   },

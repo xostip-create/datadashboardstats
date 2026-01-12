@@ -64,25 +64,22 @@ export default function DashboardPage() {
   }, [sales, items]);
   
   const getStockSummary = React.useCallback(() => {
-      if (!stock || !items) return [];
-      const salesByItem = getSalesByItem();
-      return stock.map(stockItem => {
-          const item = items.find(i => i.id === stockItem.itemId);
-          const saleInfo = salesByItem.find(s => s.name === item?.name);
-          const sold = saleInfo?.quantity || 0;
-          const expected = stockItem.openingStock - sold;
-          const discrepancy = stockItem.closingStock - expected;
-  
-          return {
-              id: item?.id || '',
-              name: item?.name || 'Unknown',
-              opening: stockItem.openingStock,
-              sold,
-              expected,
-              closing: stockItem.closingStock,
-              discrepancy,
-          };
-      });
+    if (!stock || !items) return [];
+    const salesByItem = getSalesByItem();
+    return stock.map(stockItem => {
+        const item = items.find(i => i.id === stockItem.itemId);
+        const saleInfo = salesByItem.find(s => s.name === item?.name);
+        const sold = saleInfo?.quantity || 0;
+        const closingStock = stockItem.openingStock - sold;
+
+        return {
+            id: item?.id || '',
+            name: item?.name || 'Unknown',
+            opening: stockItem.openingStock,
+            sold,
+            closing: closingStock,
+        };
+    });
   }, [stock, items, getSalesByItem]);
 
   const salesSummary = getSalesByItem();
@@ -90,13 +87,12 @@ export default function DashboardPage() {
 
   const totalRevenue = sales ? sales.reduce((acc, sale) => acc + (sale.quantity * (items.find(i => i.id === sale.itemId)?.unitPrice || 0)), 0) : 0;
   const totalItemsSold = sales ? sales.reduce((acc, sale) => acc + sale.quantity, 0) : 0;
-  const totalDiscrepancy = stockSummary.reduce((acc, item) => acc + item.discrepancy, 0);
 
   const bestSeller = salesSummary.length > 0 ? salesSummary.reduce((max, item) => item.quantity > max.quantity ? item : max) : null;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
@@ -137,20 +133,6 @@ export default function DashboardPage() {
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Stock Discrepancy</CardTitle>
-            <TrendingDown className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className={cn("text-2xl font-bold font-headline", totalDiscrepancy !== 0 ? 'text-destructive' : '')}>
-                {totalDiscrepancy}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Difference in expected vs. actual stock
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
@@ -163,10 +145,9 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Open</TableHead>
+                  <TableHead className="text-right">Opening</TableHead>
                   <TableHead className="text-right">Sold</TableHead>
                   <TableHead className="text-right">Closing</TableHead>
-                  <TableHead className="text-right">Diff</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -175,12 +156,7 @@ export default function DashboardPage() {
                     <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
                     <TableCell className="text-right">{item.opening}</TableCell>
                     <TableCell className="text-right">{item.sold}</TableCell>
-                    <TableCell className="text-right">{item.closing > 0 ? item.closing : '-'}</TableCell>
-                    <TableCell className="text-right">
-                       <Badge variant={item.discrepancy === 0 ? 'secondary' : 'destructive'} className='font-bold'>
-                         {item.discrepancy}
-                       </Badge>
-                    </TableCell>
+                    <TableCell className="text-right">{item.closing}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

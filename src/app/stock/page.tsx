@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { Save, Trash2 } from 'lucide-react';
-import { stock, inventory } from '@/lib/data';
-import type { StockRecord, Item } from '@/lib/data';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Save, PackagePlus } from 'lucide-react';
+import { useDataContext } from '@/lib/data-provider';
+import type { Item } from '@/lib/data';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -22,157 +22,255 @@ import {
 } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { cn } from '@/lib/utils';
+import { useFirestore } from '@/firebase';
+import { collection, doc, writeBatch, serverTimestamp, getDocs, query, where, Timestamp } from 'firebase/firestore';
 
-type StockInputProps = {
-  stockData: StockRecord[];
-  type: 'opening' | 'closing';
-  onStockUpdate: (updatedStock: StockRecord[]) => void;
-  onStockDelete: (itemId: string) => void;
-};
-
-function StockInputTable({ stockData, type, onStockUpdate, onStockDelete }: StockInputProps) {
-  const { toast } = useToast();
-  const [localStock, setLocalStock] = React.useState(stockData);
-
-  React.useEffect(() => {
-    setLocalStock(stockData);
-  }, [stockData]);
-
-  const handleStockChange = (itemId: string, value: string) => {
-    const newStock = localStock.map((item) => {
-      if (item.itemId === itemId) {
-        return { ...item, [type]: Number(value) };
-      }
-      return item;
-    });
-    setLocalStock(newStock);
-  };
-
-  const handleSave = () => {
-    onStockUpdate(localStock);
-    toast({
-      title: 'Stock Saved',
-      description: `The ${type} stock levels have been updated.`,
-    });
-  };
-
-  return (
-    <Card>
-       <CardHeader className='flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
-        <div>
-            <CardTitle>Update {type.charAt(0).toUpperCase() + type.slice(1)} Stock</CardTitle>
-            <CardDescription>Enter the stock count for each item.</CardDescription>
-        </div>
-        <Button onClick={handleSave} className="w-full sm:w-auto">
-          <Save className="mr-2 h-4 w-4" /> Save {type.charAt(0).toUpperCase() + type.slice(1)}
-        </Button>
-      </CardHeader>
-      <CardContent className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className='w-[60%]'>Item</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead className="text-right">Quantity</TableHead>
-              <TableHead className="w-[50px]"><span className='sr-only'>Actions</span></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {localStock.map((stockItem) => {
-              const item = inventory.find(
-                (i: Item) => i.id === stockItem.itemId
-              );
-              return (
-                <TableRow key={stockItem.itemId}>
-                  <TableCell className="font-medium flex items-center gap-3 whitespace-nowrap">
-                    {item?.icon && <item.icon className="h-5 w-5 text-muted-foreground"/>}
-                    {item?.name || 'Unknown'}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">{item?.category}</TableCell>
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      defaultValue={stockItem[type] > 0 ? stockItem[type] : ''}
-                      onChange={(e) =>
-                        handleStockChange(stockItem.itemId, e.target.value)
-                      }
-                      className="ml-auto max-w-[100px] text-right"
-                      placeholder="0"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10">
-                                <Trash2 className="h-4 w-4"/>
-                            </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete the stock record for this item.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => onStockDelete(stockItem.itemId)} variant="destructive">
-                                     Delete
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
+function getStartOfDay(date: Date) {
+    const newDate = new Date(date);
+    newDate.setHours(0, 0, 0, 0);
+    return newDate;
 }
 
 export default function StockPage() {
-  const [stockData, setStockData] = React.useState(stock);
-  const { toast } = useToast();
+    const { items, sales, stock } = useDataContext();
+    const firestore = useFirestore();
+    const { toast } = useToast();
+    const [openingStock, setOpeningStock] = React.useState<Map<string, number>>(new Map());
+    const [restockQuantities, setRestockQuantities] = React.useState<Map<string, number>>(new Map());
 
-  const handleStockUpdate = (updatedStock: StockRecord[]) => {
-      setStockData(updatedStock);
-  };
+    const getSalesByItem = React.useCallback(() => {
+        if (!sales || !items) return new Map<string, number>();
+        const salesByItem = new Map<string, number>();
+        for (const sale of sales) {
+            const existing = salesByItem.get(sale.itemId) || 0;
+            salesByItem.set(sale.itemId, existing + sale.quantity);
+        }
+        return salesByItem;
+    }, [sales, items]);
 
-  const handleStockDelete = (itemId: string) => {
-      setStockData(prev => prev.filter(s => s.itemId !== itemId));
-      toast({
-          title: 'Stock Record Deleted',
-          description: 'The stock record has been removed.',
-          variant: 'destructive',
-      });
-  };
+    const salesByItem = getSalesByItem();
+
+    React.useEffect(() => {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        const today = new Date().toISOString().split('T')[0];
+        
+        async function initializeStock() {
+            if (!firestore || !items) return;
+    
+            const todayStockQuery = query(collection(firestore, 'stockLevels'), where('date', '==', today));
+            const todaySnapshot = await getDocs(todayStockQuery);
+    
+            const newOpeningStock = new Map<string, number>();
+
+            if (!todaySnapshot.empty) {
+                // Today's stock already initialized, load it
+                todaySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    newOpeningStock.set(data.itemId, data.openingStock);
+                });
+            } else {
+                // Initialize today's stock from yesterday's closing stock
+                const yesterdayStockQuery = query(collection(firestore, 'stockLevels'), where('date', '==', yesterdayStr));
+                const yesterdaySnapshot = await getDocs(yesterdayStockQuery);
+                const yesterdayStockMap = new Map<string, any>();
+                yesterdaySnapshot.forEach(doc => {
+                    yesterdayStockMap.set(doc.data().itemId, doc.data());
+                });
+
+                const batch = writeBatch(firestore);
+
+                for (const item of items) {
+                    const yesterdayStock = yesterdayStockMap.get(item.id);
+                    let opening = 0;
+                    if (yesterdayStock) {
+                        const sold = salesByItem.get(item.id) || 0;
+                        opening = yesterdayStock.openingStock - sold;
+                    }
+                    newOpeningStock.set(item.id, opening);
+                    
+                    const todayStockRef = doc(collection(firestore, 'stockLevels'));
+                    batch.set(todayStockRef, {
+                        id: todayStockRef.id,
+                        itemId: item.id,
+                        date: today,
+                        openingStock: opening,
+                        closingStock: 0, // Will be calculated at day end
+                    });
+                }
+                await batch.commit();
+            }
+            setOpeningStock(newOpeningStock);
+        }
+    
+        initializeStock();
+    
+    }, [firestore, items]);
+
+
+    const handleOpeningStockChange = (itemId: string, value: string) => {
+        const newStock = new Map(openingStock);
+        newStock.set(itemId, Number(value));
+        setOpeningStock(newStock);
+    };
+
+    const handleSaveOpeningStock = async () => {
+        if (!firestore) return;
+        const batch = writeBatch(firestore);
+        const today = new Date().toISOString().split('T')[0];
+        
+        const stockQuery = query(collection(firestore, 'stockLevels'), where('date', '==', today));
+        const snapshot = await getDocs(stockQuery);
+        const stockDocs = new Map<string, any>();
+        snapshot.forEach(doc => stockDocs.set(doc.data().itemId, doc.ref));
+
+        openingStock.forEach((quantity, itemId) => {
+            const docRef = stockDocs.get(itemId);
+            if (docRef) {
+                batch.update(docRef, { openingStock: quantity });
+            }
+        });
+
+        await batch.commit();
+        toast({
+          title: 'Stock Saved',
+          description: `The opening stock levels have been updated.`,
+        });
+      };
+
+      const handleRestockQuantityChange = (itemId: string, value: string) => {
+        const newQuantities = new Map(restockQuantities);
+        newQuantities.set(itemId, Number(value) || 0);
+        setRestockQuantities(newQuantities);
+    };
+
+    const handleRestock = async () => {
+        if (!firestore) return;
+        const batch = writeBatch(firestore);
+        const today = new Date().toISOString().split('T')[0];
+
+        const stockQuery = query(collection(firestore, 'stockLevels'), where('date', '==', today));
+        const snapshot = await getDocs(stockQuery);
+        const stockDocs = new Map<string, any>();
+        snapshot.forEach(doc => stockDocs.set(doc.data().itemId, {ref: doc.ref, data: doc.data()}));
+
+        restockQuantities.forEach((quantity, itemId) => {
+            if (quantity > 0) {
+                const stockDoc = stockDocs.get(itemId);
+                if (stockDoc) {
+                    const newOpeningStock = stockDoc.data.openingStock + quantity;
+                    batch.update(stockDoc.ref, { openingStock: newOpeningStock });
+                    const newOpeningStockMap = new Map(openingStock);
+                    newOpeningStockMap.set(itemId, newOpeningStock);
+                    setOpeningStock(newOpeningStockMap);
+                }
+            }
+        });
+
+        await batch.commit();
+        setRestockQuantities(new Map());
+        toast({
+            title: 'Stock Updated',
+            description: 'Inventory has been restocked successfully.',
+        });
+    };
 
   return (
-    <Tabs defaultValue="opening" className="w-full">
+    <Tabs defaultValue="daily" className="w-full">
       <TabsList className="grid w-full grid-cols-2 max-w-sm">
-        <TabsTrigger value="opening">Opening Stock</TabsTrigger>
-        <TabsTrigger value="closing">Closing Stock</TabsTrigger>
+        <TabsTrigger value="daily">Daily Stock</TabsTrigger>
+        <TabsTrigger value="restock">Restock</TabsTrigger>
       </TabsList>
-      <TabsContent value="opening" className='mt-6'>
-        <StockInputTable 
-            stockData={stockData} 
-            type="opening" 
-            onStockUpdate={handleStockUpdate} 
-            onStockDelete={handleStockDelete} 
-        />
+      <TabsContent value="daily" className='mt-6'>
+         <Card>
+            <CardHeader className='flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+                <div>
+                    <CardTitle>Daily Stock Levels</CardTitle>
+                    <CardDescription>Set opening stock. Closing is calculated automatically.</CardDescription>
+                </div>
+                <Button onClick={handleSaveOpeningStock} className="w-full sm:w-auto">
+                    <Save className="mr-2 h-4 w-4" /> Save Opening Stock
+                </Button>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+                <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Item</TableHead>
+                        <TableHead className="text-right">Opening</TableHead>
+                        <TableHead className="text-right">Sold</TableHead>
+                        <TableHead className="text-right">Closing</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {items?.map((item) => {
+                        const opening = openingStock.get(item.id) || 0;
+                        const sold = salesByItem.get(item.id) || 0;
+                        const closing = opening - sold;
+                    return (
+                        <TableRow key={item.id}>
+                            <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
+                            <TableCell className="text-right">
+                                <Input
+                                    type="number"
+                                    value={opening}
+                                    onChange={(e) => handleOpeningStockChange(item.id, e.target.value)}
+                                    className="ml-auto max-w-[100px] text-right"
+                                    placeholder="0"
+                                />
+                            </TableCell>
+                            <TableCell className="text-right">{sold}</TableCell>
+                            <TableCell className="text-right">{closing}</TableCell>
+                        </TableRow>
+                    );
+                    })}
+                </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
       </TabsContent>
-      <TabsContent value="closing" className='mt-6'>
-        <StockInputTable 
-            stockData={stockData} 
-            type="closing" 
-            onStockUpdate={handleStockUpdate}
-            onStockDelete={handleStockDelete}
-        />
+      <TabsContent value="restock" className='mt-6'>
+      <Card>
+            <CardHeader className='flex-col sm:flex-row items-start sm:items-center justify-between gap-4'>
+                <div>
+                    <CardTitle>Restock Inventory</CardTitle>
+                    <CardDescription>Add new quantities to your items.</CardDescription>
+                </div>
+                <Button onClick={handleRestock} className="w-full sm:w-auto">
+                    <PackagePlus className="mr-2 h-4 w-4" /> Add to Stock
+                </Button>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+                <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead className='w-[60%]'>Item</TableHead>
+                        <TableHead>Current Stock</TableHead>
+                        <TableHead className="text-right">Add Quantity</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {items?.map((item) => (
+                        <TableRow key={item.id}>
+                            <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
+                            <TableCell>{openingStock.get(item.id) || 0}</TableCell>
+                            <TableCell className="text-right">
+                                <Input
+                                    type="number"
+                                    value={restockQuantities.get(item.id) || ''}
+                                    onChange={(e) => handleRestockQuantityChange(item.id, e.target.value)}
+                                    className="ml-auto max-w-[120px] text-right"
+                                    placeholder="0"
+                                />
+                            </TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+                </Table>
+            </CardContent>
+        </Card>
       </TabsContent>
     </Tabs>
   );

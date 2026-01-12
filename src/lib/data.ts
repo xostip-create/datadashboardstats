@@ -7,9 +7,9 @@ export type Item = {
 export type StockLevel = {
   id: string;
   itemId: string;
-  date: string;
+  date: string; // YYYY-MM-DD
   openingStock: number;
-  closingStock: number;
+  closingStock: number; // This will now be calculated automatically
 };
 
 export type Sale = {
