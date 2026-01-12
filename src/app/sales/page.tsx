@@ -41,7 +41,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { doc, deleteDoc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
@@ -81,6 +81,9 @@ export default function SalesPage() {
   const firestore = useFirestore();
   const { items, sales, stock } = useDataContext();
 
+  const [saleToDelete, setSaleToDelete] = React.useState<Sale | null>(null);
+  const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
+
   const saleFormSchema = React.useMemo(() => {
     const stockData = stock ? stock.map(s => ({ itemId: s.itemId, quantity: s.quantity })) : [];
     return getSaleFormSchema(stockData);
@@ -94,7 +97,6 @@ export default function SalesPage() {
     },
   });
   
-  // Watch for changes in itemId to trigger re-validation of quantity
   const selectedItemId = form.watch('itemId');
   React.useEffect(() => {
     if (selectedItemId) {
@@ -120,14 +122,12 @@ export default function SalesPage() {
     const saleRef = doc(collection(firestore, "sales"));
     const batch = writeBatch(firestore);
 
-    // 1. Add the sale
     batch.set(saleRef, {
         ...data,
         id: saleRef.id,
         saleDate: serverTimestamp()
     });
 
-    // 2. Update the stock level
     const stockRef = doc(firestore, "stockLevels", stockItem.id);
     const newQuantity = stockItem.quantity - data.quantity;
     batch.update(stockRef, { quantity: newQuantity });
@@ -141,39 +141,71 @@ export default function SalesPage() {
     form.reset();
   }
 
-  async function handleDeleteSale(sale: Sale) {
-    if (!firestore) return;
+  const handleDeleteRequest = (sale: Sale) => {
+    setSaleToDelete(sale);
+    setIsConfirmingDelete(true);
+  };
 
-    const stockItem = stock?.find(s => s.itemId === sale.itemId);
-    if (!stockItem) {
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not find stock to return for this sale.",
-        });
-        return;
-    }
+  const handleConfirmDelete = () => {
+    // The actual deletion is handled by the useEffect hook
+    // This just closes the dialog
+    setIsConfirmingDelete(false);
+  };
 
-    const batch = writeBatch(firestore);
+  const handleCancelDelete = () => {
+    setSaleToDelete(null);
+    setIsConfirmingDelete(false);
+  };
 
-    // Delete sale
-    const saleRef = doc(firestore, 'sales', sale.id);
-    batch.delete(saleRef);
+  React.useEffect(() => {
+      async function deleteSale() {
+          if (!saleToDelete || !firestore) return;
 
-    // Return stock
-    const stockRef = doc(firestore, 'stockLevels', stockItem.id);
-    const newQuantity = stockItem.quantity + sale.quantity;
-    batch.update(stockRef, { quantity: newQuantity });
+          const stockItem = stock?.find(s => s.itemId === saleToDelete.itemId);
+          if (!stockItem) {
+              toast({
+                  variant: "destructive",
+                  title: "Error",
+                  description: "Could not find stock to return for this sale.",
+              });
+              setSaleToDelete(null); // Reset state
+              return;
+          }
 
-    await batch.commit();
+          const batch = writeBatch(firestore);
+          const saleRef = doc(firestore, 'sales', saleToDelete.id);
+          batch.delete(saleRef);
+          
+          const stockRef = doc(firestore, 'stockLevels', stockItem.id);
+          const newQuantity = stockItem.quantity + saleToDelete.quantity;
+          batch.update(stockRef, { quantity: newQuantity });
 
-    toast({
-        title: 'Sale Deleted',
-        description: 'The sale record has been removed and stock was returned.',
-        variant: 'destructive'
-    });
-  }
-  
+          try {
+            await batch.commit();
+            toast({
+                title: 'Sale Deleted',
+                description: 'The sale record has been removed and stock was returned.',
+                variant: 'destructive'
+            });
+          } catch(e) {
+            console.error("Failed to delete sale:", e)
+            toast({
+              variant: "destructive",
+              title: "Error",
+              description: "Failed to delete the sale record.",
+            });
+          } finally {
+            setSaleToDelete(null); // Reset state after operation
+          }
+      }
+      
+      // We only run delete if the dialog has been closed *after* a sale was selected
+      if (saleToDelete && !isConfirmingDelete) {
+        deleteSale();
+      }
+  }, [saleToDelete, isConfirmingDelete, firestore, stock, toast]);
+
+
   const selectedItemStock = stock?.find(s => s.itemId === form.watch('itemId'))?.quantity;
 
   return (
@@ -322,28 +354,10 @@ export default function SalesPage() {
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Edit
                                 </DropdownMenuItem>
-                                 <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" className="w-full justify-start text-sm text-destructive hover:text-destructive px-2 py-1.5 font-normal relative flex cursor-default select-none items-center rounded-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50 hover:bg-destructive/10">
-                                          <Trash2 className="mr-2 h-4 w-4" />
-                                          Delete
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                            This action cannot be undone. This will permanently delete this sale record and return the stock.
-                                        </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteSale(sale)} variant="destructive">
-                                            Delete
-                                        </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
+                                <DropdownMenuItem onClick={() => handleDeleteRequest(sale)} className="text-destructive hover:!text-destructive focus:!text-destructive">
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete
+                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </TableCell>
@@ -354,6 +368,23 @@ export default function SalesPage() {
           </Table>
         </CardContent>
       </Card>
+
+       <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
+          <AlertDialogContent>
+              <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                  This action cannot be undone. This will permanently delete this sale record and return the stock.
+              </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+              <AlertDialogCancel onClick={handleCancelDelete}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleConfirmDelete} variant="destructive">
+                  Delete
+              </AlertDialogAction>
+              </AlertDialogFooter>
+          </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
