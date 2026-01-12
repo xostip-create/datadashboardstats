@@ -36,7 +36,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,15 +43,13 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Popover,
   PopoverContent,
@@ -68,7 +65,7 @@ import {
 } from '@/components/ui/command';
 
 import { useDataContext } from '@/lib/data-provider';
-import type { Item, Sale } from '@/lib/data';
+import type { Sale } from '@/lib/data';
 import { useFirestore } from '@/firebase';
 import {
   collection,
@@ -76,21 +73,17 @@ import {
   writeBatch,
   serverTimestamp,
   deleteDoc,
-  updateDoc,
 } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 export default function SalesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { items, sales, stock } = useDataContext();
 
-  const [isMounted, setIsMounted] = React.useState(false);
   const [deleteSaleId, setDeleteSaleId] = React.useState<string | null>(null);
-
-  React.useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const [isDeleteConfirmationOpen, setDeleteConfirmationOpen] = React.useState(false);
 
   const getSaleFormSchema = () => {
     return z.object({
@@ -101,7 +94,9 @@ export default function SalesPage() {
     }).superRefine((data, ctx) => {
         if (data.itemId) {
             const stockItem = stock?.find(s => s.itemId === data.itemId);
-            const availableStock = stockItem?.quantity || 0;
+            const salesByItem = sales?.filter(s => s.itemId === data.itemId).reduce((acc, sale) => acc + sale.quantity, 0) || 0;
+            const availableStock = (stockItem?.quantity || 0) - salesByItem;
+            
             if (data.quantity > availableStock) {
                 ctx.addIssue({
                     code: z.ZodIssueCode.custom,
@@ -121,10 +116,9 @@ export default function SalesPage() {
     },
   });
 
-  // We need to re-create the resolver when stock data changes
   React.useEffect(() => {
     form.trigger();
-  }, [stock, form]);
+  }, [stock, sales, form]);
 
   const onSubmit = async (data: z.infer<ReturnType<typeof getSaleFormSchema>>) => {
     if (!firestore) return;
@@ -141,9 +135,6 @@ export default function SalesPage() {
         return;
     }
 
-    const newStockQuantity = stockItem.quantity - data.quantity;
-    const stockRef = doc(firestore, 'stockLevels', stockItem.id);
-
     const batch = writeBatch(firestore);
 
     batch.set(saleRef, {
@@ -153,8 +144,6 @@ export default function SalesPage() {
         saleDate: serverTimestamp(),
     });
 
-    batch.update(stockRef, { quantity: newStockQuantity });
-
     try {
         await batch.commit();
         toast({
@@ -162,7 +151,6 @@ export default function SalesPage() {
             description: `A new sale has been successfully recorded.`,
         });
         form.reset();
-        // Manually reset combobox trigger
         const trigger = document.querySelector('#item-combobox-trigger');
         if (trigger) {
           trigger.textContent = 'Select item';
@@ -177,24 +165,16 @@ export default function SalesPage() {
     }
   };
 
-  const handleDeleteSale = async (sale: Sale) => {
-    if (!firestore) return;
+  const handleDeleteSale = async () => {
+    if (!firestore || !deleteSaleId) return;
 
-    const saleRef = doc(firestore, 'sales', sale.id);
-    const stockItem = stock?.find(s => s.itemId === sale.itemId);
+    const saleToDelete = sales?.find(s => s.id === deleteSaleId);
+    if (!saleToDelete) return;
 
-    const batch = writeBatch(firestore);
-    batch.delete(saleRef);
-    
-    // Add the quantity back to stock
-    if (stockItem) {
-        const stockRef = doc(firestore, 'stockLevels', stockItem.id);
-        const newStockQuantity = stockItem.quantity + sale.quantity;
-        batch.update(stockRef, { quantity: newStockQuantity });
-    }
+    const saleRef = doc(firestore, 'sales', saleToDelete.id);
     
     try {
-        await batch.commit();
+        await deleteDoc(saleRef);
     } catch(error: any) {
          toast({
             variant: "destructive",
@@ -203,11 +183,13 @@ export default function SalesPage() {
         });
     } finally {
         setDeleteSaleId(null);
+        setDeleteConfirmationOpen(false);
     }
   };
   
-  if (!isMounted) {
-    return null; // Or a loading skeleton
+  const openDeleteDialog = (saleId: string) => {
+    setDeleteSaleId(saleId);
+    setDeleteConfirmationOpen(true);
   }
 
   const getItemName = (itemId: string) => items?.find(i => i.id === itemId)?.name || 'Unknown Item';
@@ -257,12 +239,9 @@ export default function SalesPage() {
                                 <CommandItem
                                   value={item.name}
                                   key={item.id}
-                                  onSelect={(currentValue) => {
-                                    const selectedItem = items.find(i => i.name.toLowerCase() === currentValue.toLowerCase());
-                                    if(selectedItem) {
-                                      form.setValue("itemId", selectedItem.id);
-                                      form.trigger("quantity"); // Re-validate quantity on item change
-                                    }
+                                  onSelect={() => {
+                                    form.setValue("itemId", item.id);
+                                    form.trigger("quantity");
                                   }}
                                 >
                                   <Check
@@ -325,7 +304,7 @@ export default function SalesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales?.sort((a,b) => b.saleDate?.toMillis() - a.saleDate?.toMillis()).map((sale) => {
+              {sales?.sort((a,b) => (b.saleDate?.toMillis() ?? 0) - (a.saleDate?.toMillis() ?? 0)).map((sale) => {
                 const item = items?.find(i => i.id === sale.itemId);
                 return (
                   <TableRow key={sale.id}>
@@ -343,7 +322,7 @@ export default function SalesPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             className="text-destructive hover:!text-destructive"
-                            onSelect={() => setDeleteSaleId(sale.id)}
+                            onSelect={() => openDeleteDialog(sale.id)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
@@ -359,30 +338,25 @@ export default function SalesPage() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!deleteSaleId} onOpenChange={(open) => !open && setDeleteSaleId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the sale record and return the sold quantity back to stock.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className={cn(buttonVariants({ variant: "destructive" }))}
-              onClick={() => {
-                const saleToDelete = sales?.find(s => s.id === deleteSaleId);
-                if (saleToDelete) {
-                  handleDeleteSale(saleToDelete);
-                }
-              }}
+       <Dialog open={isDeleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the sale record.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteConfirmationOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteSale}
             >
               Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
