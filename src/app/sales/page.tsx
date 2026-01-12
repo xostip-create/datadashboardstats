@@ -75,7 +75,6 @@ export default function SalesPage() {
   const firestore = useFirestore();
   const { items: inventoryData, sales: salesData } = useDataContext();
   
-  const [isPopoverOpen, setPopoverOpen] = React.useState(false);
   const [isModalOpen, setModalOpen] = React.useState(false);
   const [editingSale, setEditingSale] = React.useState<Sale | null>(null);
 
@@ -90,13 +89,22 @@ export default function SalesPage() {
 
   React.useEffect(() => {
     if (editingSale) {
-        salesForm.setValue('itemId', editingSale.itemId);
-        salesForm.setValue('quantity', editingSale.quantity);
+        salesForm.reset({
+            itemId: editingSale.itemId,
+            quantity: editingSale.quantity
+        });
         setModalOpen(true);
     } else {
         salesForm.reset({ itemId: '', quantity: 1 });
     }
   }, [editingSale, salesForm]);
+
+  const handleModalOpenChange = (isOpen: boolean) => {
+    setModalOpen(isOpen);
+    if (!isOpen) {
+        setEditingSale(null);
+    }
+  }
 
 
   async function onSaleSubmit(data: SalesFormValues) {
@@ -154,17 +162,12 @@ export default function SalesPage() {
        <Card>
         <CardHeader className="flex-row items-center justify-between">
           <div>
-            <CardTitle>Log a New Sale</CardTitle>
+            <CardTitle>Sales Management</CardTitle>
             <CardDescription>
-              Select an item and enter the quantity sold.
+              Log new sales and view today's transaction history.
             </CardDescription>
           </div>
-          <Dialog open={isModalOpen} onOpenChange={(isOpen) => {
-                if (!isOpen) {
-                    setEditingSale(null);
-                }
-                setModalOpen(isOpen);
-            }}>
+          <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
             <DialogTrigger asChild>
                 <Button>
                     <PlusCircle className="mr-2 h-4 w-4" /> Add Sale
@@ -178,14 +181,14 @@ export default function SalesPage() {
                     </DialogDescription>
                 </DialogHeader>
                  <Form {...salesForm}>
-                    <form onSubmit={salesForm.handleSubmit(onSaleSubmit)} className="flex flex-col gap-4">
+                    <form onSubmit={salesForm.handleSubmit(onSaleSubmit)} className="space-y-4">
                        <FormField
                         control={salesForm.control}
                         name="itemId"
                         render={({ field }) => (
-                          <FormItem className="flex-1 w-full">
+                          <FormItem className="flex flex-col">
                             <FormLabel>Item</FormLabel>
-                             <Popover open={isPopoverOpen} onOpenChange={setPopoverOpen}>
+                             <Popover>
                               <PopoverTrigger asChild>
                                 <FormControl>
                                   <Button
@@ -200,7 +203,7 @@ export default function SalesPage() {
                                       ? inventoryData?.find(
                                           (item) => item.id === field.value
                                         )?.name
-                                      : "Select an item to sell"}
+                                      : "Select item"}
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                   </Button>
                                 </FormControl>
@@ -213,11 +216,10 @@ export default function SalesPage() {
                                     <CommandGroup>
                                       {inventoryData?.map((item) => (
                                         <CommandItem
-                                          value={item.id}
+                                          value={item.name}
                                           key={item.id}
-                                          onSelect={(currentValue) => {
-                                            salesForm.setValue("itemId", currentValue === field.value ? "" : currentValue)
-                                            setPopoverOpen(false)
+                                          onSelect={() => {
+                                            salesForm.setValue("itemId", item.id)
                                           }}
                                         >
                                           <Check
