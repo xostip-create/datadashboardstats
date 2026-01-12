@@ -23,6 +23,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Form,
   FormControl,
   FormField,
@@ -50,7 +56,8 @@ function getSaleFormSchema(stockData: { itemId: string; quantity: number }[]) {
     }).refine((data) => {
         const stockItem = stockData.find(s => s.itemId === data.itemId);
         if (!stockItem) return true; // Let other validations handle missing item
-        return data.quantity <= stockItem.quantity;
+        const availableStock = stockItem.quantity;
+        return data.quantity <= availableStock;
     }, {
         message: "Quantity cannot exceed current stock.",
         path: ["quantity"],
@@ -75,7 +82,8 @@ export default function SalesPage() {
   const { items, sales, stock } = useDataContext();
 
   const saleFormSchema = React.useMemo(() => {
-    return getSaleFormSchema(stock || []);
+    const stockData = stock ? stock.map(s => ({ itemId: s.itemId, quantity: s.quantity })) : [];
+    return getSaleFormSchema(stockData);
   }, [stock]);
 
   const form = useForm<SaleFormValues>({
