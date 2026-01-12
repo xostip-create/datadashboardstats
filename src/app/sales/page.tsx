@@ -35,18 +35,28 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { doc, deleteDoc, addDoc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { doc, deleteDoc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 
-const saleFormSchema = z.object({
-  itemId: z.string().min(1, 'Please select an item.'),
-  quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
-});
 
-type SaleFormValues = z.infer<typeof saleFormSchema>;
+type SaleFormValues = z.infer<ReturnType<typeof getSaleFormSchema>>;
+
+function getSaleFormSchema(stockData: { itemId: string; quantity: number }[]) {
+    return z.object({
+        itemId: z.string().min(1, 'Please select an item.'),
+        quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
+    }).refine((data) => {
+        const stockItem = stockData.find(s => s.itemId === data.itemId);
+        if (!stockItem) return true; // Let other validations handle missing item
+        return data.quantity <= stockItem.quantity;
+    }, {
+        message: "Quantity cannot exceed current stock.",
+        path: ["quantity"],
+    });
+}
+
 
 function FormattedTime({ date }: { date: any }) {
     const [time, setTime] = React.useState('');
@@ -64,6 +74,10 @@ export default function SalesPage() {
   const firestore = useFirestore();
   const { items, sales, stock } = useDataContext();
 
+  const saleFormSchema = React.useMemo(() => {
+    return getSaleFormSchema(stock || []);
+  }, [stock]);
+
   const form = useForm<SaleFormValues>({
     resolver: zodResolver(saleFormSchema),
     defaultValues: {
@@ -71,11 +85,19 @@ export default function SalesPage() {
       quantity: 1,
     },
   });
+  
+  // Watch for changes in itemId to trigger re-validation of quantity
+  const selectedItemId = form.watch('itemId');
+  React.useEffect(() => {
+    if (selectedItemId) {
+        form.trigger('quantity');
+    }
+  }, [selectedItemId, form]);
+
 
   async function onSubmit(data: SaleFormValues) {
     if (!firestore) return;
 
-    const saleRef = doc(collection(firestore, "sales"));
     const stockItem = stock?.find(s => s.itemId === data.itemId);
 
     if (!stockItem) {
@@ -87,6 +109,7 @@ export default function SalesPage() {
         return;
     }
 
+    const saleRef = doc(collection(firestore, "sales"));
     const batch = writeBatch(firestore);
 
     // 1. Add the sale
@@ -142,6 +165,8 @@ export default function SalesPage() {
         variant: 'destructive'
     });
   }
+  
+  const selectedItemStock = stock?.find(s => s.itemId === form.watch('itemId'))?.quantity;
 
   return (
     <div className="flex flex-col gap-6">
@@ -152,7 +177,7 @@ export default function SalesPage() {
         </CardHeader>
         <CardContent>
             <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col sm:flex-row items-end gap-4">
+                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col sm:flex-row items-start gap-4">
                     <FormField
                         control={form.control}
                         name="itemId"
@@ -180,17 +205,25 @@ export default function SalesPage() {
                                         </FormControl>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-full p-0" align="start">
-                                        <Command>
+                                        <Command
+                                            filter={(value, search) => {
+                                                const item = items?.find(i => i.id === value);
+                                                if (item) {
+                                                    return item.name.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
+                                                }
+                                                return 0;
+                                            }}
+                                        >
                                             <CommandInput placeholder="Search item..." />
                                             <CommandList>
                                                 <CommandEmpty>No item found.</CommandEmpty>
                                                 <CommandGroup>
                                                     {items?.map((item) => (
                                                     <CommandItem
-                                                        value={item.name}
+                                                        value={item.id}
                                                         key={item.id}
-                                                        onSelect={() => {
-                                                            form.setValue("itemId", item.id)
+                                                        onSelect={(currentValue) => {
+                                                            form.setValue("itemId", currentValue === field.value ? "" : currentValue)
                                                         }}
                                                     >
                                                         <Check
@@ -218,15 +251,24 @@ export default function SalesPage() {
                         name="quantity"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Quantity</FormLabel>
+                                <FormLabel>
+                                    Quantity
+                                    {selectedItemStock !== undefined && (
+                                        <span className="text-muted-foreground text-xs ml-2">
+                                            (In Stock: {selectedItemStock})
+                                        </span>
+                                    )}
+                                </FormLabel>
                                 <FormControl>
-                                    <Input type="number" placeholder="1" {...field} className="w-24"/>
+                                    <Input type="number" placeholder="1" {...field} className="w-32"/>
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>
                         )}
                     />
-                    <Button type="submit">Add Sale</Button>
+                    <div className="self-end h-full pb-1">
+                        <Button type="submit">Add Sale</Button>
+                    </div>
                 </form>
             </Form>
         </CardContent>
