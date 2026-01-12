@@ -116,6 +116,7 @@ export default function ShortagesPage() {
       });
       form.reset();
     } catch(error: any) {
+      console.error("Error logging shortage:", error);
       toast({
         variant: "destructive",
         title: "Error Logging Shortage",
@@ -137,6 +138,7 @@ export default function ShortagesPage() {
             variant: 'destructive',
           });
       } catch(error: any) {
+        console.error("Error deleting shortage:", error);
          toast({
             variant: "destructive",
             title: "Error Deleting Shortage",
@@ -276,3 +278,5 @@ export default function ShortagesPage() {
     </div>
   );
 }
+
+    

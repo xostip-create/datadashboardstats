@@ -159,6 +159,7 @@ export default function SalesPage() {
       setSelectedItemStock(null);
   
     } catch(error: any) {
+      console.error("Error logging sale:", error);
       toast({
         variant: "destructive",
         title: "Error Logging Sale",
@@ -180,6 +181,7 @@ export default function SalesPage() {
             variant: 'destructive',
         });
       } catch(error: any) {
+        console.error("Error deleting sale:", error);
          toast({
             variant: "destructive",
             title: "Error Deleting Sale",
@@ -358,3 +360,5 @@ export default function SalesPage() {
     </div>
   );
 }
+
+    

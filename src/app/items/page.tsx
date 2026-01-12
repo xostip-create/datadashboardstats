@@ -112,63 +112,72 @@ function ItemManagementTab() {
   
     const onSubmit = async (data: ItemFormValues) => {
       if (!firestore) return;
-      if (editingItem) {
-        // Update item and stock
-        const itemRef = doc(firestore, 'items', editingItem.id);
-        const batch = writeBatch(firestore);
-  
-        batch.update(itemRef, {
-          name: data.name,
-          unitPrice: data.unitPrice,
-        });
-  
-        if(editingItem.stockId) {
-          const stockRef = doc(firestore, 'stockLevels', editingItem.stockId);
-          batch.update(stockRef, {
-              quantity: data.quantity
+      try {
+        if (editingItem) {
+          // Update item and stock
+          const itemRef = doc(firestore, 'items', editingItem.id);
+          const batch = writeBatch(firestore);
+    
+          batch.update(itemRef, {
+            name: data.name,
+            unitPrice: data.unitPrice,
+          });
+    
+          if(editingItem.stockId) {
+            const stockRef = doc(firestore, 'stockLevels', editingItem.stockId);
+            batch.update(stockRef, {
+                quantity: data.quantity
+            });
+          } else {
+            // This case should ideally not happen if stock is created with item
+            const stockRef = doc(collection(firestore, 'stockLevels'));
+            batch.set(stockRef, {
+                id: stockRef.id,
+                itemId: editingItem.id,
+                quantity: data.quantity
+            });
+          }
+    
+    
+          await batch.commit();
+    
+          toast({
+            title: 'Item Updated',
+            description: `${data.name} has been updated.`,
           });
         } else {
-          // This case should ideally not happen if stock is created with item
-          const stockRef = doc(collection(firestore, 'stockLevels'));
-          batch.set(stockRef, {
-              id: stockRef.id,
-              itemId: editingItem.id,
-              quantity: data.quantity
+          // Create new item
+          const newItemRef = doc(collection(firestore, 'items'));
+          const newStockRef = doc(collection(firestore, 'stockLevels'));
+    
+          const batch = writeBatch(firestore);
+    
+          batch.set(newItemRef, {
+            id: newItemRef.id,
+            name: data.name,
+            unitPrice: data.unitPrice,
+          });
+    
+          batch.set(newStockRef, {
+              id: newStockRef.id,
+              itemId: newItemRef.id,
+              quantity: data.quantity,
+          });
+    
+          await batch.commit();
+          
+          toast({
+            title: 'Item Created',
+            description: `${data.name} has been added to the inventory.`,
           });
         }
-  
-  
-        await batch.commit();
-  
+      } catch (error) {
+        console.error("Error submitting item form:", error);
         toast({
-          title: 'Item Updated',
-          description: `${data.name} has been updated.`,
-        });
-      } else {
-        // Create new item
-        const newItemRef = doc(collection(firestore, 'items'));
-        const newStockRef = doc(collection(firestore, 'stockLevels'));
-  
-        const batch = writeBatch(firestore);
-  
-        batch.set(newItemRef, {
-          id: newItemRef.id,
-          name: data.name,
-          unitPrice: data.unitPrice,
-        });
-  
-        batch.set(newStockRef, {
-            id: newStockRef.id,
-            itemId: newItemRef.id,
-            quantity: data.quantity,
-        });
-  
-        await batch.commit();
-        
-        toast({
-          title: 'Item Created',
-          description: `${data.name} has been added to the inventory.`,
-        });
+          title: 'An Error Occurred',
+          description: 'Could not save the item. Please try again.',
+          variant: 'destructive'
+        })
       }
       setModalOpen(false);
       setEditingItem(null);
@@ -177,26 +186,35 @@ function ItemManagementTab() {
     const handleDeleteItem = async (itemId: string) => {
       if (!firestore) return;
   
-      const batch = writeBatch(firestore);
-      
-      // Delete item
-      const itemRef = doc(firestore, 'items', itemId);
-      batch.delete(itemRef);
-  
-      // Find and delete associated stock level
-      const stockQuery = query(collection(firestore, 'stockLevels'), where('itemId', '==', itemId));
-      const stockSnapshot = await getDocs(stockQuery);
-      stockSnapshot.forEach(doc => {
-          batch.delete(doc.ref);
-      });
-  
-      await batch.commit();
-  
-      toast({
-        title: 'Item Deleted',
-        description: 'The item has been removed from inventory.',
-        variant: 'destructive',
-      });
+      try {
+        const batch = writeBatch(firestore);
+        
+        // Delete item
+        const itemRef = doc(firestore, 'items', itemId);
+        batch.delete(itemRef);
+    
+        // Find and delete associated stock level
+        const stockQuery = query(collection(firestore, 'stockLevels'), where('itemId', '==', itemId));
+        const stockSnapshot = await getDocs(stockQuery);
+        stockSnapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+    
+        await batch.commit();
+    
+        toast({
+          title: 'Item Deleted',
+          description: 'The item has been removed from inventory.',
+          variant: 'destructive',
+        });
+      } catch (error) {
+        console.error("Error deleting item:", error);
+        toast({
+          title: 'An Error Occurred',
+          description: 'Could not delete the item. Please try again.',
+          variant: 'destructive'
+        })
+      }
     };
   
     const getItemStock = (itemId: string) => {
@@ -379,19 +397,29 @@ function StaffManagementTab() {
     const onSubmit = async (data: StaffFormValues) => {
         if (!firestore) return;
 
-        if (editingStaff) {
-            const staffRef = doc(firestore, 'staff', editingStaff.id);
-            await updateDoc(staffRef, { name: data.name });
+        try {
+            if (editingStaff) {
+                const staffRef = doc(firestore, 'staff', editingStaff.id);
+                await updateDoc(staffRef, { name: data.name });
+                toast({
+                    title: 'Staff Updated',
+                    description: `${data.name}'s record has been updated.`,
+                });
+            } else {
+                const newDocRef = doc(collection(firestore, "staff"));
+                await addDoc(collection(firestore, 'staff'), { id: newDocRef.id, name: data.name });
+                toast({
+                    title: 'Staff Added',
+                    description: `${data.name} has been added.`,
+                });
+            }
+        } catch (error) {
+            console.error("Error submitting staff form:", error);
             toast({
-                title: 'Staff Updated',
-                description: `${data.name}'s record has been updated.`,
-            });
-        } else {
-            await addDoc(collection(firestore, 'staff'), { name: data.name });
-            toast({
-                title: 'Staff Added',
-                description: `${data.name} has been added.`,
-            });
+                title: 'An Error Occurred',
+                description: 'Could not save the staff member. Please try again.',
+                variant: 'destructive'
+            })
         }
         setModalOpen(false);
         setEditingStaff(null);
@@ -399,12 +427,21 @@ function StaffManagementTab() {
 
     const handleDeleteStaff = async (staffId: string) => {
         if (!firestore) return;
-        await deleteDoc(doc(firestore, 'staff', staffId));
-        toast({
-            title: 'Staff Deleted',
-            description: 'The staff member has been removed.',
-            variant: 'destructive',
-        });
+        try {
+            await deleteDoc(doc(firestore, 'staff', staffId));
+            toast({
+                title: 'Staff Deleted',
+                description: 'The staff member has been removed.',
+                variant: 'destructive',
+            });
+        } catch (error) {
+            console.error("Error deleting staff:", error);
+            toast({
+                title: 'An Error Occurred',
+                description: 'Could not delete the staff member. Please try again.',
+                variant: 'destructive'
+            })
+        }
     };
 
     return (
@@ -533,3 +570,5 @@ export default function ItemsPage() {
         </div>
     );
 }
+
+    
