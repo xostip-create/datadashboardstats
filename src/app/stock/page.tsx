@@ -86,8 +86,16 @@ export default function StockPage() {
                     const yesterdayStock = yesterdayStockMap.get(item.id);
                     let opening = 0;
                     if (yesterdayStock) {
-                        const sold = salesByItem.get(item.id) || 0;
-                        opening = yesterdayStock.openingStock - sold;
+                        const yesterdaySalesQuery = query(collection(firestore, 'sales'), where('saleDate', '>=', getStartOfDay(yesterday)), where('saleDate', '<', getStartOfDay(new Date())));
+                        const yesterdaySalesSnapshot = await getDocs(yesterdaySalesQuery);
+                        const yesterdaySalesByItem = new Map<string, number>();
+                        yesterdaySalesSnapshot.forEach(doc => {
+                            const sale = doc.data();
+                            const existing = yesterdaySalesByItem.get(sale.itemId) || 0;
+                            yesterdaySalesByItem.set(sale.itemId, existing + sale.quantity);
+                        });
+                        const soldYesterday = yesterdaySalesByItem.get(item.id) || 0;
+                        opening = yesterdayStock.openingStock - soldYesterday;
                     }
                     newOpeningStock.set(item.id, opening);
                     
@@ -97,15 +105,19 @@ export default function StockPage() {
                         itemId: item.id,
                         date: today,
                         openingStock: opening,
-                        closingStock: 0, // Will be calculated at day end
+                        closingStock: 0, // This is a placeholder, it's calculated
                     });
                 }
-                await batch.commit();
+                if (items.length > 0) {
+                    await batch.commit();
+                }
             }
             setOpeningStock(newOpeningStock);
         }
     
-        initializeStock();
+        if(items){
+            initializeStock();
+        }
     
     }, [firestore, items]);
 
@@ -156,20 +168,20 @@ export default function StockPage() {
         const stockDocs = new Map<string, any>();
         snapshot.forEach(doc => stockDocs.set(doc.data().itemId, {ref: doc.ref, data: doc.data()}));
 
+        const newOpeningStockMap = new Map(openingStock);
         restockQuantities.forEach((quantity, itemId) => {
             if (quantity > 0) {
                 const stockDoc = stockDocs.get(itemId);
                 if (stockDoc) {
                     const newOpeningStock = stockDoc.data.openingStock + quantity;
                     batch.update(stockDoc.ref, { openingStock: newOpeningStock });
-                    const newOpeningStockMap = new Map(openingStock);
                     newOpeningStockMap.set(itemId, newOpeningStock);
-                    setOpeningStock(newOpeningStockMap);
                 }
             }
         });
 
         await batch.commit();
+        setOpeningStock(newOpeningStockMap);
         setRestockQuantities(new Map());
         toast({
             title: 'Stock Updated',
