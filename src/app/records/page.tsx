@@ -19,13 +19,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/logo';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
-import { collection, query, where } from 'firebase/firestore';
+import { collection, query, where, Timestamp, startOfDay, endOfDay } from 'firebase/firestore';
 import type { Item, Sale, StockLevel } from '@/lib/data';
 import { Package, ShoppingBag } from 'lucide-react';
+import { format } from 'date-fns';
+
 
 function NairaIcon({ className }: { className?: string }) {
   return (
@@ -61,29 +62,44 @@ export default function RecordsPage() {
   const router = useRouter();
   const firestore = useFirestore();
 
+  // Common queries
   const itemsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return collection(firestore, 'items');
   }, [firestore]);
   const { data: items } = useCollection<Item>(itemsQuery);
 
-  const salesQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
-    return collection(firestore, 'sales');
-  }, [firestore]);
-  const { data: sales } = useCollection<Sale>(salesQuery);
-  
   const stockLevelsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return collection(firestore, 'stockLevels');
   }, [firestore]);
   const { data: stock } = useCollection<StockLevel>(stockLevelsQuery);
 
+  // Queries for today's data (for summary cards)
+  const todayStart = startOfDay(new Date());
+  const todayEnd = endOfDay(new Date());
 
-  const getSalesByItem = React.useCallback(() => {
-    if (!sales || !items) return [];
+  const todaySalesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return query(
+      collection(firestore, 'sales'),
+      where('saleDate', '>=', todayStart),
+      where('saleDate', '<=', todayEnd)
+    );
+  }, [firestore, todayStart, todayEnd]);
+  const { data: todaySales } = useCollection<Sale>(todaySalesQuery);
+
+  // Query for all sales (for history tab)
+  const allSalesQuery = useMemoFirebase(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'sales');
+  }, [firestore]);
+  const { data: allSales } = useCollection<Sale>(allSalesQuery);
+
+  const getSalesSummary = (salesData: Sale[] | null) => {
+    if (!salesData || !items) return [];
     const salesByItem = new Map<string, { quantity: number; total: number }>();
-    for (const sale of sales) {
+    for (const sale of salesData) {
       const item = items.find(i => i.id === sale.itemId);
       const saleTotal = item ? sale.quantity * item.unitPrice : 0;
       const existing = salesByItem.get(sale.itemId) || { quantity: 0, total: 0 };
@@ -100,15 +116,13 @@ export default function RecordsPage() {
         total: data.total,
       };
     });
-  }, [sales, items]);
-  
+  };
+
   const getStockSummary = React.useCallback(() => {
       if (!stock || !items) return [];
-      const salesByItem = getSalesByItem();
-      
       const salesMap = new Map<string, number>();
-      if (sales) {
-          for (const sale of sales) {
+      if (allSales) {
+          for (const sale of allSales) {
               const current = salesMap.get(sale.itemId) || 0;
               salesMap.set(sale.itemId, current + sale.quantity);
           }
@@ -119,22 +133,37 @@ export default function RecordsPage() {
           const opening = stockItem?.quantity || 0;
           const sold = salesMap.get(item.id) || 0;
           const closing = opening - sold;
-          return {
-              id: item.id,
-              name: item.name,
-              opening: opening,
-              sold: sold,
-              closing: closing,
-          };
+          return { id: item.id, name: item.name, opening, sold, closing };
       });
-  }, [stock, items, sales, getSalesByItem]);
+  }, [stock, items, allSales]);
+  
+  const getSalesGroupedByDate = React.useCallback(() => {
+    if (!allSales) return {};
+    return allSales.reduce((acc, sale) => {
+        const saleDate = sale.saleDate?.toDate ? sale.saleDate.toDate() : new Date(sale.saleDate);
+        const dateKey = format(saleDate, 'yyyy-MM-dd');
+        if (!acc[dateKey]) {
+            acc[dateKey] = [];
+        }
+        acc[dateKey].push(sale);
+        // Sort sales within the day
+        acc[dateKey].sort((a, b) => (b.saleDate?.toMillis() ?? 0) - (a.saleDate?.toMillis() ?? 0));
+        return acc;
+    }, {} as Record<string, Sale[]>);
+  }, [allSales]);
 
-  const salesSummary = getSalesByItem();
+
+  // Data for summary cards (today only)
+  const todaySalesSummary = getSalesSummary(todaySales);
+  const totalRevenueToday = todaySalesSummary.reduce((acc, item) => acc + item.total, 0);
+  const totalItemsSoldToday = todaySalesSummary.reduce((acc, item) => acc + item.quantity, 0);
+  const bestSellerToday = todaySalesSummary.length > 0 ? todaySalesSummary.reduce((max, item) => item.quantity > max.quantity ? item : max) : null;
+  const currentDate = format(new Date(), 'MMMM d, yyyy');
+
+  // Data for tables
   const stockSummary = getStockSummary();
-
-  const totalRevenue = sales ? sales.reduce((acc, sale) => acc + (sale.quantity * (items?.find(i => i.id === sale.itemId)?.unitPrice || 0)), 0) : 0;
-  const totalItemsSold = sales ? sales.reduce((acc, sale) => acc + sale.quantity, 0) : 0;
-  const bestSeller = salesSummary.length > 0 ? salesSummary.reduce((max, item) => item.quantity > max.quantity ? item : max) : null;
+  const salesByDate = getSalesGroupedByDate();
+  const sortedSaleDates = Object.keys(salesByDate).sort((a, b) => b.localeCompare(a));
 
 
   return (
@@ -154,10 +183,10 @@ export default function RecordsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold font-headline">
-                  ₦{totalRevenue.toFixed(2)}
+                  ₦{totalRevenueToday.toFixed(2)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Today's total sales
+                  Sales for {currentDate}
                 </p>
               </CardContent>
             </Card>
@@ -167,9 +196,9 @@ export default function RecordsPage() {
                 <ShoppingBag className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold font-headline">{totalItemsSold}</div>
+                <div className="text-2xl font-bold font-headline">{totalItemsSoldToday}</div>
                 <p className="text-xs text-muted-foreground">
-                  Total items sold today
+                  Total items sold on {currentDate}
                 </p>
               </CardContent>
             </Card>
@@ -180,10 +209,10 @@ export default function RecordsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold font-headline">
-                  {bestSeller ? bestSeller.name : 'N/A'}
+                  {bestSellerToday ? bestSellerToday.name : 'N/A'}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Top-selling item today
+                  Top-selling item for {currentDate}
                 </p>
               </CardContent>
             </Card>
@@ -197,9 +226,9 @@ export default function RecordsPage() {
           <TabsContent value="sales" className="mt-6">
             <Card>
               <CardHeader>
-                <CardTitle>Sales Records</CardTitle>
+                <CardTitle>Sales History</CardTitle>
                 <CardDescription>
-                  A public view of all sales transactions.
+                  A public view of all sales transactions, grouped by date.
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
@@ -213,25 +242,42 @@ export default function RecordsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sales?.sort((a, b) => (b.saleDate?.toMillis() ?? 0) - (a.saleDate?.toMillis() ?? 0)).map((sale) => {
-                      const item = items?.find((i) => i.id === sale.itemId);
-                      return (
-                        <TableRow key={sale.id}>
-                          <TableCell className="font-medium whitespace-nowrap">
-                            {item?.name || 'Unknown'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {sale.quantity}
-                          </TableCell>
-                          <TableCell className="text-right whitespace-nowrap">
-                            ₦{(sale.quantity * (item?.unitPrice || 0)).toFixed(2)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <FormattedTime date={sale.saleDate} />
-                          </TableCell>
+                    {sortedSaleDates.length > 0 ? (
+                        sortedSaleDates.map(date => (
+                            <React.Fragment key={date}>
+                                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                                    <TableCell colSpan={4} className="font-bold text-muted-foreground">
+                                        {format(new Date(date), 'EEEE, MMMM d, yyyy')}
+                                    </TableCell>
+                                </TableRow>
+                                {salesByDate[date].map(sale => {
+                                    const item = items?.find((i) => i.id === sale.itemId);
+                                    return (
+                                        <TableRow key={sale.id}>
+                                            <TableCell className="font-medium whitespace-nowrap">
+                                            {item?.name || 'Unknown'}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                            {sale.quantity}
+                                            </TableCell>
+                                            <TableCell className="text-right whitespace-nowrap">
+                                            ₦{(sale.quantity * (item?.unitPrice || 0)).toFixed(2)}
+                                            </TableCell>
+                                            <TableCell className="text-right">
+                                            <FormattedTime date={sale.saleDate} />
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
+                            </React.Fragment>
+                        ))
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground">
+                                No sales recorded yet.
+                            </TableCell>
                         </TableRow>
-                      );
-                    })}
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
@@ -242,7 +288,7 @@ export default function RecordsPage() {
               <CardHeader>
                 <CardTitle>Stock Summary</CardTitle>
                 <CardDescription>
-                  A public view of daily stock levels and discrepancies.
+                  A public view of current stock levels based on all sales.
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
