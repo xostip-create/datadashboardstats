@@ -4,9 +4,14 @@ import * as React from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import type { Sale } from '@/lib/data';
-import { Button, buttonVariants } from '@/components/ui/button';
+import {
+  Check,
+  ChevronsUpDown,
+  MoreHorizontal,
+  PlusCircle,
+  Trash2,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -23,12 +28,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
   Form,
   FormControl,
   FormField,
@@ -37,6 +36,13 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,293 +53,325 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+
 import { useDataContext } from '@/lib/data-provider';
+import type { Item, Sale } from '@/lib/data';
 import { useFirestore } from '@/firebase';
-import { doc, collection, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
+import {
+  collection,
+  doc,
+  writeBatch,
+  serverTimestamp,
+  deleteDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 
-
-type SaleFormValues = z.infer<ReturnType<typeof getSaleFormSchema>>;
-
-function getSaleFormSchema(stockData: { itemId: string; quantity: number }[]) {
-  return z.object({
-      itemId: z.string().min(1, 'Please select an item.'),
-      quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
-  }).refine((data) => {
-      const stockItem = stockData.find(s => s.itemId === data.itemId);
-      // If stock info isn't available yet, pass validation and check on submission.
-      if (!stockItem) return true;
-      const availableStock = stockItem.quantity;
-      return data.quantity <= availableStock;
-  }, {
-      message: "Quantity cannot exceed current stock.",
-      path: ["quantity"],
-  });
-}
-
-
-function FormattedTime({ date }: { date: any }) {
-    const [time, setTime] = React.useState('');
-    React.useEffect(() => {
-        if (date) {
-            const d = date.toDate ? date.toDate() : new Date(date);
-            setTime(d.toLocaleTimeString());
-        }
-    }, [date]);
-    return <>{time}</>;
-}
-
 export default function SalesPage() {
-  const firestore = useFirestore();
   const { toast } = useToast();
+  const firestore = useFirestore();
   const { items, sales, stock } = useDataContext();
 
-  const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
-  const [saleToDelete, setSaleToDelete] = React.useState<Sale | null>(null);
+  const [isMounted, setIsMounted] = React.useState(false);
+  const [deleteSaleId, setDeleteSaleId] = React.useState<string | null>(null);
 
-  const saleFormSchema = React.useMemo(() => {
-    const stockData = stock ? stock.map(s => ({ itemId: s.itemId, quantity: s.quantity })) : [];
-    return getSaleFormSchema(stockData);
-  }, [stock]);
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
-  const form = useForm<SaleFormValues>({
-    resolver: zodResolver(saleFormSchema),
+  const getSaleFormSchema = () => {
+    return z.object({
+      itemId: z.string({ required_error: 'Please select an item.' }),
+      quantity: z.coerce
+        .number()
+        .min(1, 'Quantity must be at least 1.'),
+    }).superRefine((data, ctx) => {
+        if (data.itemId) {
+            const stockItem = stock?.find(s => s.itemId === data.itemId);
+            const availableStock = stockItem?.quantity || 0;
+            if (data.quantity > availableStock) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `Not enough stock. Only ${availableStock} available.`,
+                    path: ['quantity'],
+                });
+            }
+        }
+    });
+  }
+
+  const form = useForm<z.infer<ReturnType<typeof getSaleFormSchema>>>({
+    resolver: zodResolver(getSaleFormSchema()),
     defaultValues: {
       itemId: '',
       quantity: 1,
     },
   });
-  
-  const selectedItemId = form.watch('itemId');
+
+  // We need to re-create the resolver when stock data changes
   React.useEffect(() => {
-    if (selectedItemId) {
-        form.trigger('quantity');
-    }
-  }, [selectedItemId, form, stock]);
+    form.trigger();
+  }, [stock, form]);
 
-
-  async function onSubmit(data: SaleFormValues) {
+  const onSubmit = async (data: z.infer<ReturnType<typeof getSaleFormSchema>>) => {
     if (!firestore) return;
 
+    const saleRef = doc(collection(firestore, 'sales'));
     const stockItem = stock?.find(s => s.itemId === data.itemId);
+
     if (!stockItem) {
         toast({
             variant: "destructive",
             title: "Error",
-            description: "Stock information for this item not found.",
+            description: "Could not find stock for the selected item."
         });
         return;
     }
 
-    if (data.quantity > stockItem.quantity) {
-        form.setError("quantity", {
-            type: "manual",
-            message: "Quantity cannot exceed current stock.",
-        });
-        return;
-    }
+    const newStockQuantity = stockItem.quantity - data.quantity;
+    const stockRef = doc(firestore, 'stockLevels', stockItem.id);
 
-    const saleRef = doc(collection(firestore, "sales"));
-    const stockRef = doc(firestore, "stockLevels", stockItem.id);
     const batch = writeBatch(firestore);
 
     batch.set(saleRef, {
-        ...data,
         id: saleRef.id,
-        saleDate: serverTimestamp()
+        itemId: data.itemId,
+        quantity: data.quantity,
+        saleDate: serverTimestamp(),
     });
 
-    const newQuantity = stockItem.quantity - data.quantity;
-    batch.update(stockRef, { quantity: newQuantity });
-    
+    batch.update(stockRef, { quantity: newStockQuantity });
+
     try {
-      await batch.commit();
-      toast({
-        title: "Sale Logged",
-        description: `Successfully recorded sale of ${data.quantity} unit(s).`,
-      });
-      form.reset();
-    } catch(e: any) {
+        await batch.commit();
+        toast({
+            title: 'Sale Logged',
+            description: `A new sale has been successfully recorded.`,
+        });
+        form.reset();
+    } catch(error: any) {
         toast({
             variant: "destructive",
-            title: "Error",
-            description: e.message || "Could not log the sale.",
+            title: "Error Logging Sale",
+            description: error.message || "An unexpected error occurred."
         });
     }
-  }
-  
-  const handleDeleteRequest = (sale: Sale) => {
-    setSaleToDelete(sale);
-    setIsConfirmingDelete(true);
   };
 
-  const handleCancelDelete = () => {
-    setSaleToDelete(null);
-    setIsConfirmingDelete(false);
-  };
-  
-  const handleConfirmDelete = async () => {
-    if (!saleToDelete || !firestore) return;
+  const handleDeleteSale = async (sale: Sale) => {
+    if (!firestore) return;
 
-    const stockItem = stock?.find(s => s.itemId === saleToDelete.itemId);
-    const saleRef = doc(firestore, 'sales', saleToDelete.id);
+    const saleRef = doc(firestore, 'sales', sale.id);
+    const stockItem = stock?.find(s => s.itemId === sale.itemId);
 
+    const batch = writeBatch(firestore);
+    batch.delete(saleRef);
+    
+    // Add the quantity back to stock
+    if (stockItem) {
+        const stockRef = doc(firestore, 'stockLevels', stockItem.id);
+        const newStockQuantity = stockItem.quantity + sale.quantity;
+        batch.update(stockRef, { quantity: newStockQuantity });
+    }
+    
     try {
-        if (stockItem) {
-            const batch = writeBatch(firestore);
-            const stockRef = doc(firestore, 'stockLevels', stockItem.id);
-            const newQuantity = stockItem.quantity + saleToDelete.quantity;
-            batch.update(stockRef, { quantity: newQuantity });
-            batch.delete(saleRef);
-            await batch.commit();
-        } else {
-            // If for some reason there is no stock item, just delete the sale
-            await deleteDoc(saleRef);
-        }
-    } catch(e) {
-      console.error("Failed to delete sale:", e);
+        await batch.commit();
+    } catch(error: any) {
+         toast({
+            variant: "destructive",
+            title: "Error Deleting Sale",
+            description: error.message || "An unexpected error occurred."
+        });
     } finally {
-      setIsConfirmingDelete(false);
-      setSaleToDelete(null);
+        setDeleteSaleId(null);
     }
   };
+  
+  if (!isMounted) {
+    return null; // Or a loading skeleton
+  }
 
-  const selectedItemStock = stock?.find(s => s.itemId === form.watch('itemId'))?.quantity;
+  const getItemName = (itemId: string) => items?.find(i => i.id === itemId)?.name || 'Unknown Item';
 
   return (
     <div className="flex flex-col gap-6">
-       <Card>
+      <Card>
         <CardHeader>
-            <CardTitle>Log a New Sale</CardTitle>
-            <CardDescription>Select an item and enter the quantity sold.</CardDescription>
+          <CardTitle>Log a New Sale</CardTitle>
+          <CardDescription>Select an item and enter the quantity sold.</CardDescription>
         </CardHeader>
         <CardContent>
-            <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col sm:flex-row items-start gap-4">
-                    <FormField
-                      control={form.control}
-                      name="itemId"
-                      render={({ field }) => (
-                        <FormItem className="flex-1 w-full sm:w-auto">
-                          <FormLabel>Item</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select an item" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+              <FormField
+                control={form.control}
+                name="itemId"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Item</FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            className={cn(
+                              "w-full justify-between",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value
+                              ? items?.find(item => item.id === field.value)?.name
+                              : "Select item"}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                        <Command>
+                          <CommandInput placeholder="Search items..." />
+                          <CommandList>
+                            <CommandEmpty>No items found.</CommandEmpty>
+                            <CommandGroup>
                               {items?.map((item) => (
-                                <SelectItem key={item.id} value={item.id} disabled={(stock?.find(s => s.itemId === item.id)?.quantity || 0) === 0}>
-                                  {item.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                        control={form.control}
-                        name="quantity"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>
-                                    Quantity
-                                    {selectedItemId && selectedItemStock !== undefined && (
-                                        <span className="text-muted-foreground text-xs ml-2">
-                                            (In Stock: {selectedItemStock})
-                                        </span>
+                                <CommandItem
+                                  value={item.name}
+                                  key={item.id}
+                                  onSelect={() => {
+                                    form.setValue("itemId", item.id);
+                                    form.trigger("quantity"); // Re-validate quantity on item change
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      item.id === field.value
+                                        ? "opacity-100"
+                                        : "opacity-0"
                                     )}
-                                </FormLabel>
-                                <FormControl>
-                                    <Input type="number" placeholder="1" {...field} className="w-32"/>
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                    <div className="self-end h-full pb-1">
-                        <Button type="submit">Add Sale</Button>
-                    </div>
-                </form>
-            </Form>
+                                  />
+                                  {item.name}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="quantity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Quantity</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="1" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="sm:pt-8">
+                 <Button type="submit" className="w-full">
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Add Sale
+                </Button>
+              </div>
+            </form>
+          </Form>
         </CardContent>
       </Card>
-
+      
       <Card>
         <CardHeader>
           <CardTitle>Today's Sales</CardTitle>
-          <CardDescription>A list of all transactions for today.</CardDescription>
+          <CardDescription>A list of all sales recorded today.</CardDescription>
         </CardHeader>
-        <CardContent className='overflow-x-auto'>
+        <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Item</TableHead>
                 <TableHead className="text-right">Quantity</TableHead>
-                <TableHead className="text-right">Total Price</TableHead>
-                <TableHead className="text-right">Time</TableHead>
+                <TableHead className="text-right">Price</TableHead>
                 <TableHead className="w-[50px]"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales?.map((sale) => {
-                const item = items?.find((i) => i.id === sale.itemId);
+              {sales?.sort((a,b) => b.saleDate?.toMillis() - a.saleDate?.toMillis()).map((sale) => {
+                const item = items?.find(i => i.id === sale.itemId);
                 return (
                   <TableRow key={sale.id}>
                     <TableCell className="font-medium whitespace-nowrap">{item?.name || 'Unknown'}</TableCell>
                     <TableCell className="text-right">{sale.quantity}</TableCell>
-                    <TableCell className="text-right">₦{(item ? item.unitPrice * sale.quantity : 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">
-                      <FormattedTime date={sale.saleDate} />
-                    </TableCell>
+                    <TableCell className="text-right">₦{(sale.quantity * (item?.unitPrice || 0)).toFixed(2)}</TableCell>
                     <TableCell>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <span className="sr-only">Open menu</span>
-                                    <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                                <DropdownMenuItem disabled>
-                                    <Pencil className="mr-2 h-4 w-4" />
-                                    Edit
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDeleteRequest(sale)} className="text-destructive hover:!text-destructive focus:!text-destructive">
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Delete
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-destructive hover:!text-destructive"
+                            onSelect={() => setDeleteSaleId(sale.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
                   </TableRow>
-                );
+                )
               })}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-       <AlertDialog open={isConfirmingDelete} onOpenChange={setIsConfirmingDelete}>
-          <AlertDialogContent>
-              <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-              <AlertDialogDescription>
-                  This action cannot be undone. This will permanently delete this sale record and return the stock.
-              </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-              <AlertDialogCancel onClick={handleCancelDelete}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmDelete} className={cn(buttonVariants({ variant: "destructive" }))}>
-                  Delete
-              </AlertDialogAction>
-              </AlertDialogFooter>
-          </AlertDialogContent>
+      <AlertDialog open={!!deleteSaleId} onOpenChange={(open) => !open && setDeleteSaleId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the sale record and return the sold quantity back to stock.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={cn(buttonVariants({ variant: "destructive" }))}
+              onClick={() => {
+                const saleToDelete = sales?.find(s => s.id === deleteSaleId);
+                if (saleToDelete) {
+                  handleDeleteSale(saleToDelete);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
     </div>
   );
