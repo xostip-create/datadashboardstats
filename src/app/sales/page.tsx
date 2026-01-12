@@ -216,10 +216,10 @@ export default function SalesPage() {
                                     <CommandGroup>
                                       {inventoryData?.map((item) => (
                                         <CommandItem
-                                          value={item.name}
+                                          value={item.id}
                                           key={item.id}
-                                          onSelect={() => {
-                                            salesForm.setValue("itemId", item.id)
+                                          onSelect={(currentValue) => {
+                                            salesForm.setValue("itemId", currentValue === field.value ? "" : currentValue)
                                           }}
                                         >
                                           <Check
