@@ -124,10 +124,14 @@ export default function SalesPage() {
         });
     } else {
         // Create new sale
-        await addDoc(collection(firestore, 'sales'), {
+        const saleRef = collection(firestore, 'sales');
+        await addDoc(saleRef, {
+          id: '', // Firestore will generate this
           itemId: data.itemId,
           quantity: data.quantity,
           saleDate: serverTimestamp(),
+        }).then(docRef => {
+            updateDoc(docRef, {id: docRef.id})
         });
 
         toast({
