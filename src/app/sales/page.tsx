@@ -11,7 +11,7 @@ import {
   PlusCircle,
   Trash2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -162,6 +162,12 @@ export default function SalesPage() {
             description: `A new sale has been successfully recorded.`,
         });
         form.reset();
+        // Manually reset combobox trigger
+        const trigger = document.querySelector('#item-combobox-trigger');
+        if (trigger) {
+          trigger.textContent = 'Select item';
+        }
+
     } catch(error: any) {
         toast({
             variant: "destructive",
@@ -226,6 +232,7 @@ export default function SalesPage() {
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
+                            id="item-combobox-trigger"
                             variant="outline"
                             role="combobox"
                             className={cn(
@@ -250,9 +257,12 @@ export default function SalesPage() {
                                 <CommandItem
                                   value={item.name}
                                   key={item.id}
-                                  onSelect={() => {
-                                    form.setValue("itemId", item.id);
-                                    form.trigger("quantity"); // Re-validate quantity on item change
+                                  onSelect={(currentValue) => {
+                                    const selectedItem = items.find(i => i.name.toLowerCase() === currentValue.toLowerCase());
+                                    if(selectedItem) {
+                                      form.setValue("itemId", selectedItem.id);
+                                      form.trigger("quantity"); // Re-validate quantity on item change
+                                    }
                                   }}
                                 >
                                   <Check
