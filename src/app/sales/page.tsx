@@ -1,7 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { MoreHorizontal, Pencil, Trash2, ChevronsUpDown, Check } from 'lucide-react';
 import type { Sale } from '@/lib/data';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,15 +22,31 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { doc, deleteDoc } from 'firebase/firestore';
+import { doc, deleteDoc, addDoc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 
+const saleFormSchema = z.object({
+  itemId: z.string().min(1, 'Please select an item.'),
+  quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
+});
+
+type SaleFormValues = z.infer<typeof saleFormSchema>;
 
 function FormattedTime({ date }: { date: any }) {
     const [time, setTime] = React.useState('');
@@ -40,21 +59,86 @@ function FormattedTime({ date }: { date: any }) {
     return <>{time}</>;
 }
 
-
 export default function SalesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { items, sales } = useDataContext();
-  
-  const [editingSale, setEditingSale] = React.useState<Sale | null>(null);
+  const { items, sales, stock } = useDataContext();
 
+  const form = useForm<SaleFormValues>({
+    resolver: zodResolver(saleFormSchema),
+    defaultValues: {
+      itemId: '',
+      quantity: 1,
+    },
+  });
 
-  async function handleDeleteSale(saleId: string) {
+  async function onSubmit(data: SaleFormValues) {
     if (!firestore) return;
-    await deleteDoc(doc(firestore, 'sales', saleId));
+
+    const saleRef = doc(collection(firestore, "sales"));
+    const stockItem = stock?.find(s => s.itemId === data.itemId);
+
+    if (!stockItem) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Stock information for this item not found.",
+        });
+        return;
+    }
+
+    const batch = writeBatch(firestore);
+
+    // 1. Add the sale
+    batch.set(saleRef, {
+        ...data,
+        id: saleRef.id,
+        saleDate: serverTimestamp()
+    });
+
+    // 2. Update the stock level
+    const stockRef = doc(firestore, "stockLevels", stockItem.id);
+    const newQuantity = stockItem.quantity - data.quantity;
+    batch.update(stockRef, { quantity: newQuantity });
+    
+
+    await batch.commit();
+    toast({
+        title: "Sale Logged",
+        description: `Successfully logged sale.`,
+    });
+    form.reset();
+  }
+
+  async function handleDeleteSale(sale: Sale) {
+    if (!firestore) return;
+
+    const stockItem = stock?.find(s => s.itemId === sale.itemId);
+    if (!stockItem) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Could not find stock to return for this sale.",
+        });
+        return;
+    }
+
+    const batch = writeBatch(firestore);
+
+    // Delete sale
+    const saleRef = doc(firestore, 'sales', sale.id);
+    batch.delete(saleRef);
+
+    // Return stock
+    const stockRef = doc(firestore, 'stockLevels', stockItem.id);
+    const newQuantity = stockItem.quantity + sale.quantity;
+    batch.update(stockRef, { quantity: newQuantity });
+
+    await batch.commit();
+
     toast({
         title: 'Sale Deleted',
-        description: 'The sale record has been removed.',
+        description: 'The sale record has been removed and stock was returned.',
         variant: 'destructive'
     });
   }
@@ -62,14 +146,90 @@ export default function SalesPage() {
   return (
     <div className="flex flex-col gap-6">
        <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle>Sales Management</CardTitle>
-            <CardDescription>
-              View and manage today's transaction history.
-            </CardDescription>
-          </div>
+        <CardHeader>
+            <CardTitle>Log a New Sale</CardTitle>
+            <CardDescription>Select an item and enter the quantity sold.</CardDescription>
         </CardHeader>
+        <CardContent>
+            <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col sm:flex-row items-end gap-4">
+                    <FormField
+                        control={form.control}
+                        name="itemId"
+                        render={({ field }) => (
+                            <FormItem className="flex-1 w-full sm:w-auto">
+                                <FormLabel>Item</FormLabel>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                        <FormControl>
+                                        <Button
+                                            variant="outline"
+                                            role="combobox"
+                                            className={cn(
+                                            "w-full justify-between",
+                                            !field.value && "text-muted-foreground"
+                                            )}
+                                        >
+                                            {field.value
+                                            ? items?.find(
+                                                (item) => item.id === field.value
+                                                )?.name
+                                            : "Select item"}
+                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                        </Button>
+                                        </FormControl>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-full p-0" align="start">
+                                        <Command>
+                                            <CommandInput placeholder="Search item..." />
+                                            <CommandList>
+                                                <CommandEmpty>No item found.</CommandEmpty>
+                                                <CommandGroup>
+                                                    {items?.map((item) => (
+                                                    <CommandItem
+                                                        value={item.name}
+                                                        key={item.id}
+                                                        onSelect={() => {
+                                                            form.setValue("itemId", item.id)
+                                                        }}
+                                                    >
+                                                        <Check
+                                                            className={cn(
+                                                                "mr-2 h-4 w-4",
+                                                                item.id === field.value
+                                                                ? "opacity-100"
+                                                                : "opacity-0"
+                                                            )}
+                                                        />
+                                                        {item.name}
+                                                    </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="quantity"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Quantity</FormLabel>
+                                <FormControl>
+                                    <Input type="number" placeholder="1" {...field} className="w-24"/>
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <Button type="submit">Add Sale</Button>
+                </form>
+            </Form>
+        </CardContent>
       </Card>
 
       <Card>
@@ -108,7 +268,7 @@ export default function SalesPage() {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setEditingSale(sale)} disabled>
+                                <DropdownMenuItem disabled>
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Edit
                                 </DropdownMenuItem>
@@ -123,12 +283,12 @@ export default function SalesPage() {
                                         <AlertDialogHeader>
                                         <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                                         <AlertDialogDescription>
-                                            This action cannot be undone. This will permanently delete this sale record.
+                                            This action cannot be undone. This will permanently delete this sale record and return the stock.
                                         </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteSale(sale.id)} variant="destructive">
+                                        <AlertDialogAction onClick={() => handleDeleteSale(sale)} variant="destructive">
                                             Delete
                                         </AlertDialogAction>
                                         </AlertDialogFooter>
