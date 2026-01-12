@@ -22,10 +22,10 @@ import { Logo } from '@/components/logo';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
-import { collection, query, where, Timestamp, startOfDay, endOfDay } from 'firebase/firestore';
+import { collection, query, where, Timestamp } from 'firebase/firestore';
 import type { Item, Sale, StockLevel } from '@/lib/data';
 import { Package, ShoppingBag } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfDay, endOfDay } from 'date-fns';
 
 
 function NairaIcon({ className }: { className?: string }) {
