@@ -22,19 +22,11 @@ import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
 import { collection, query, where } from 'firebase/firestore';
 import type { Item, Sale, StockLevel, Shortage } from '@/lib/data';
-import { Calendar as CalendarIcon, Package, Search, ShoppingBag, Users } from 'lucide-react';
-import { format, startOfDay, endOfDay, addDays } from 'date-fns';
+import { Package, Search, ShoppingBag } from 'lucide-react';
+import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
-import type { DateRange } from "react-day-picker"
-import { useIsMobile } from '@/hooks/use-mobile';
 
 
 function NairaIcon({ className }: { className?: string }) {
@@ -56,16 +48,14 @@ function NairaIcon({ className }: { className?: string }) {
   );
 }
 
+type ShortageFilter = 'today' | '7days' | '30days' | 'all';
+
 export default function RecordsPage() {
   const firestore = useFirestore();
-  const isMobile = useIsMobile();
 
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
   const [stockSearchTerm, setStockSearchTerm] = React.useState('');
-  const [shortageDateRange, setShortageDateRange] = React.useState<DateRange | undefined>({
-    from: startOfDay(new Date()),
-    to: endOfDay(new Date()),
-  });
+  const [shortageFilter, setShortageFilter] = React.useState<ShortageFilter>('today');
 
   // Common queries
   const itemsQuery = useMemoFirebase(() => {
@@ -177,16 +167,29 @@ export default function RecordsPage() {
 
   const filteredShortages = React.useMemo(() => {
     if (!shortages) return [];
-    if (!shortageDateRange?.from) return shortages;
+
+    const now = new Date();
+    let fromDate;
     
-    const fromDate = startOfDay(shortageDateRange.from);
-    const toDate = shortageDateRange.to ? endOfDay(shortageDateRange.to) : endOfDay(shortageDateRange.from);
+    switch (shortageFilter) {
+        case 'today':
+            fromDate = startOfDay(now);
+            break;
+        case '7days':
+            fromDate = startOfDay(subDays(now, 6));
+            break;
+        case '30days':
+            fromDate = startOfDay(subDays(now, 29));
+            break;
+        case 'all':
+            return shortages;
+    }
 
     return shortages.filter(shortage => {
       const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
-      return shortageDate >= fromDate && shortageDate <= toDate;
+      return shortageDate >= fromDate;
     });
-  }, [shortages, shortageDateRange]);
+  }, [shortages, shortageFilter]);
 
 
   const getShortagesGroupedByDate = React.useCallback(() => {
@@ -290,7 +293,7 @@ export default function RecordsPage() {
         </div>
 
         <Tabs defaultValue="sales">
-          <TabsList className="grid w-full grid-cols-3 max-w-sm mx-auto sm:mx-0">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="sales">Sales Records</TabsTrigger>
             <TabsTrigger value="stock">Stock Summary</TabsTrigger>
             <TabsTrigger value="shortages">Shortages</TabsTrigger>
@@ -409,44 +412,20 @@ export default function RecordsPage() {
             <Card>
                 <CardHeader>
                   <CardTitle>Shortage History</CardTitle>
-                  <CardDescription>A public view of all staff shortages. Select a date range to view totals.</CardDescription>
-                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button
-                          id="date"
-                          variant={"outline"}
-                          className={cn(
-                            "w-full sm:w-[300px] justify-start text-left font-normal",
-                            !shortageDateRange && "text-muted-foreground"
-                          )}
-                        >
-                          <CalendarIcon className="mr-2 h-4 w-4" />
-                          {shortageDateRange?.from ? (
-                            shortageDateRange.to ? (
-                              <>
-                                {format(shortageDateRange.from, "LLL dd, y")} -{" "}
-                                {format(shortageDateRange.to, "LLL dd, y")}
-                              </>
-                            ) : (
-                              format(shortageDateRange.from, "LLL dd, y")
-                            )
-                          ) : (
-                            <span>Pick a date range</span>
-                          )}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          initialFocus
-                          mode="range"
-                          defaultMonth={shortageDateRange?.from}
-                          selected={shortageDateRange}
-                          onSelect={setShortageDateRange}
-                          numberOfMonths={isMobile ? 1 : 2}
-                        />
-                      </PopoverContent>
-                    </Popover>
+                  <CardDescription>A public view of all staff shortages. Select a filter to view totals.</CardDescription>
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {(['today', '7days', '30days', 'all'] as ShortageFilter[]).map(filter => (
+                      <Button
+                        key={filter}
+                        variant={shortageFilter === filter ? 'default' : 'outline'}
+                        onClick={() => setShortageFilter(filter)}
+                      >
+                        {filter === 'today' && 'Today'}
+                        {filter === '7days' && 'Last 7 Days'}
+                        {filter === '30days' && 'Last 30 Days'}
+                        {filter === 'all' && 'All Time'}
+                      </Button>
+                    ))}
                   </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
@@ -488,7 +467,7 @@ export default function RecordsPage() {
                         ) : (
                             <TableRow>
                             <TableCell colSpan={2} className="text-center text-muted-foreground">
-                                'No shortages recorded for the selected period.'
+                                No shortages recorded for the selected period.
                             </TableCell>
                             </TableRow>
                         )}
@@ -502,5 +481,3 @@ export default function RecordsPage() {
     </div>
   );
 }
-
-    
