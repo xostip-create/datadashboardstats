@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import type { Sale } from '@/lib/data';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -38,36 +38,39 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { doc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, collection, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 
 type SaleFormValues = z.infer<ReturnType<typeof getSaleFormSchema>>;
 
 function getSaleFormSchema(stockData: { itemId: string; quantity: number }[]) {
-    return z.object({
-        itemId: z.string().min(1, 'Please select an item.'),
-        quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
-    }).refine((data) => {
-        const stockItem = stockData.find(s => s.itemId === data.itemId);
-        if (!stockItem) return true; // Let it pass if stock not found, handle in submit
-        const availableStock = stockItem.quantity;
-        return data.quantity <= availableStock;
-    }, {
-        message: "Quantity cannot exceed current stock.",
-        path: ["quantity"],
-    });
+  return z.object({
+      itemId: z.string().min(1, 'Please select an item.'),
+      quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
+  }).refine((data) => {
+      const stockItem = stockData.find(s => s.itemId === data.itemId);
+      // If stock info isn't available yet, pass validation and check on submission.
+      if (!stockItem) return true;
+      const availableStock = stockItem.quantity;
+      return data.quantity <= availableStock;
+  }, {
+      message: "Quantity cannot exceed current stock.",
+      path: ["quantity"],
+  });
 }
 
 
@@ -84,11 +87,11 @@ function FormattedTime({ date }: { date: any }) {
 
 export default function SalesPage() {
   const firestore = useFirestore();
+  const { toast } = useToast();
   const { items, sales, stock } = useDataContext();
 
-  const [saleToDelete, setSaleToDelete] = React.useState<Sale | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
-
+  const [saleToDelete, setSaleToDelete] = React.useState<Sale | null>(null);
 
   const saleFormSchema = React.useMemo(() => {
     const stockData = stock ? stock.map(s => ({ itemId: s.itemId, quantity: s.quantity })) : [];
@@ -108,21 +111,32 @@ export default function SalesPage() {
     if (selectedItemId) {
         form.trigger('quantity');
     }
-  }, [selectedItemId, form]);
+  }, [selectedItemId, form, stock]);
 
 
   async function onSubmit(data: SaleFormValues) {
     if (!firestore) return;
 
     const stockItem = stock?.find(s => s.itemId === data.itemId);
-
     if (!stockItem) {
-        // This case should ideally not happen if items and stock are in sync
-        console.error("Stock information for this item not found.");
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Stock information for this item not found.",
+        });
+        return;
+    }
+
+    if (data.quantity > stockItem.quantity) {
+        form.setError("quantity", {
+            type: "manual",
+            message: "Quantity cannot exceed current stock.",
+        });
         return;
     }
 
     const saleRef = doc(collection(firestore, "sales"));
+    const stockRef = doc(firestore, "stockLevels", stockItem.id);
     const batch = writeBatch(firestore);
 
     batch.set(saleRef, {
@@ -131,13 +145,23 @@ export default function SalesPage() {
         saleDate: serverTimestamp()
     });
 
-    const stockRef = doc(firestore, "stockLevels", stockItem.id);
     const newQuantity = stockItem.quantity - data.quantity;
     batch.update(stockRef, { quantity: newQuantity });
     
-
-    await batch.commit();
-    form.reset();
+    try {
+      await batch.commit();
+      toast({
+        title: "Sale Logged",
+        description: `Successfully recorded sale of ${data.quantity} unit(s).`,
+      });
+      form.reset();
+    } catch(e: any) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: e.message || "Could not log the sale.",
+        });
+    }
   }
   
   const handleDeleteRequest = (sale: Sale) => {
@@ -154,25 +178,22 @@ export default function SalesPage() {
     if (!saleToDelete || !firestore) return;
 
     const stockItem = stock?.find(s => s.itemId === saleToDelete.itemId);
-    if (!stockItem) {
-        console.error("Could not find stock to return for this sale.");
-        setIsConfirmingDelete(false);
-        setSaleToDelete(null);
-        return;
-    }
-
-    const batch = writeBatch(firestore);
     const saleRef = doc(firestore, 'sales', saleToDelete.id);
-    batch.delete(saleRef);
-    
-    const stockRef = doc(firestore, 'stockLevels', stockItem.id);
-    const newQuantity = stockItem.quantity + saleToDelete.quantity;
-    batch.update(stockRef, { quantity: newQuantity });
 
     try {
-      await batch.commit();
+        if (stockItem) {
+            const batch = writeBatch(firestore);
+            const stockRef = doc(firestore, 'stockLevels', stockItem.id);
+            const newQuantity = stockItem.quantity + saleToDelete.quantity;
+            batch.update(stockRef, { quantity: newQuantity });
+            batch.delete(saleRef);
+            await batch.commit();
+        } else {
+            // If for some reason there is no stock item, just delete the sale
+            await deleteDoc(saleRef);
+        }
     } catch(e) {
-      console.error("Failed to delete sale:", e)
+      console.error("Failed to delete sale:", e);
     } finally {
       setIsConfirmingDelete(false);
       setSaleToDelete(null);
@@ -205,7 +226,7 @@ export default function SalesPage() {
                             </FormControl>
                             <SelectContent>
                               {items?.map((item) => (
-                                <SelectItem key={item.id} value={item.id}>
+                                <SelectItem key={item.id} value={item.id} disabled={(stock?.find(s => s.itemId === item.id)?.quantity || 0) === 0}>
                                   {item.name}
                                 </SelectItem>
                               ))}
@@ -222,7 +243,7 @@ export default function SalesPage() {
                             <FormItem>
                                 <FormLabel>
                                     Quantity
-                                    {selectedItemStock !== undefined && (
+                                    {selectedItemId && selectedItemStock !== undefined && (
                                         <span className="text-muted-foreground text-xs ml-2">
                                             (In Stock: {selectedItemStock})
                                         </span>
@@ -308,7 +329,7 @@ export default function SalesPage() {
               </AlertDialogHeader>
               <AlertDialogFooter>
               <AlertDialogCancel onClick={handleCancelDelete}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleConfirmDelete} variant="destructive">
+              <AlertDialogAction onClick={handleConfirmDelete} className={cn(buttonVariants({ variant: "destructive" }))}>
                   Delete
               </AlertDialogAction>
               </AlertDialogFooter>
