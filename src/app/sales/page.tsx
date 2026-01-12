@@ -1,11 +1,8 @@
 'use client';
 
 import * as React from 'react';
-import { z } from 'zod';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Check, ChevronsUpDown, PlusCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-import type { Item, Sale } from '@/lib/data';
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import type { Sale } from '@/lib/data';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -22,40 +19,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
+
 import { useToast } from '@/hooks/use-toast';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { cn } from '@/lib/utils';
+
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 
-
-const salesFormSchema = z.object({
-  itemId: z.string().min(1, 'Please select an item.'),
-  quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
-});
-
-type SalesFormValues = z.infer<typeof salesFormSchema>;
 
 function FormattedTime({ date }: { date: any }) {
     const [time, setTime] = React.useState('');
@@ -74,77 +46,8 @@ export default function SalesPage() {
   const firestore = useFirestore();
   const { items, sales } = useDataContext();
   
-  const [isModalOpen, setModalOpen] = React.useState(false);
   const [editingSale, setEditingSale] = React.useState<Sale | null>(null);
 
-
-  const salesForm = useForm<SalesFormValues>({
-    resolver: zodResolver(salesFormSchema),
-    defaultValues: {
-      itemId: '',
-      quantity: 1,
-    },
-  });
-
-  React.useEffect(() => {
-    if (editingSale) {
-        salesForm.reset({
-            itemId: editingSale.itemId,
-            quantity: editingSale.quantity
-        });
-        setModalOpen(true);
-    } else {
-        salesForm.reset({ itemId: '', quantity: 1 });
-    }
-  }, [editingSale, salesForm]);
-
-  const handleModalOpenChange = (isOpen: boolean) => {
-    setModalOpen(isOpen);
-    if (!isOpen) {
-        setEditingSale(null);
-    }
-  }
-
-
-  async function onSaleSubmit(data: SalesFormValues) {
-    if (!firestore || !items) return;
-
-    const item = items.find((i) => i.id === data.itemId);
-    if (!item) return;
-
-    if (editingSale) {
-        // Update existing sale
-        const saleRef = doc(firestore, 'sales', editingSale.id);
-        await updateDoc(saleRef, {
-          itemId: data.itemId,
-          quantity: data.quantity,
-        });
-        toast({
-            title: 'Sale Updated',
-            description: `Sale record for ${item.name} has been updated.`,
-        });
-    } else {
-        // Create new sale
-        const saleRef = collection(firestore, 'sales');
-        await addDoc(saleRef, {
-          id: '', // Firestore will generate this
-          itemId: data.itemId,
-          quantity: data.quantity,
-          saleDate: serverTimestamp(),
-        }).then(docRef => {
-            updateDoc(docRef, {id: docRef.id})
-        });
-
-        toast({
-          title: 'Sale Recorded',
-          description: `${data.quantity} x ${item.name} added.`,
-        });
-    }
-
-    salesForm.reset({ itemId: '', quantity: 1 });
-    setEditingSale(null);
-    setModalOpen(false);
-  }
 
   async function handleDeleteSale(saleId: string) {
     if (!firestore) return;
@@ -163,106 +66,9 @@ export default function SalesPage() {
           <div>
             <CardTitle>Sales Management</CardTitle>
             <CardDescription>
-              Log new sales and view today's transaction history.
+              View and manage today's transaction history.
             </CardDescription>
           </div>
-          <Dialog open={isModalOpen} onOpenChange={handleModalOpenChange}>
-            <DialogTrigger asChild>
-                <Button>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Add Sale
-                </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                    <DialogTitle>{editingSale ? 'Edit Sale' : 'Log a New Sale'}</DialogTitle>
-                    <DialogDescription>
-                        {editingSale ? 'Update the details for this sale.' : 'Select an item and enter the quantity sold.'}
-                    </DialogDescription>
-                </DialogHeader>
-                 <Form {...salesForm}>
-                    <form onSubmit={salesForm.handleSubmit(onSaleSubmit)} className="space-y-4">
-                       <FormField
-                        control={salesForm.control}
-                        name="itemId"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-col">
-                            <FormLabel>Item</FormLabel>
-                             <Popover>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    variant="outline"
-                                    role="combobox"
-                                    className={cn(
-                                      "w-full justify-between",
-                                      !field.value && "text-muted-foreground"
-                                    )}
-                                  >
-                                    {field.value
-                                      ? items?.find(
-                                          (item) => item.id === field.value
-                                        )?.name
-                                      : "Select item"}
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                                <Command>
-                                  <CommandInput placeholder="Search item..." />
-                                  <CommandList>
-                                    <CommandEmpty>No item found.</CommandEmpty>
-                                    <CommandGroup>
-                                      {items?.map((item) => (
-                                        <CommandItem
-                                          value={item.name}
-                                          key={item.id}
-                                          onSelect={() => {
-                                            salesForm.setValue("itemId", item.id)
-                                          }}
-                                        >
-                                          <Check
-                                            className={cn(
-                                              "mr-2 h-4 w-4",
-                                              item.id === field.value
-                                                ? "opacity-100"
-                                                : "opacity-0"
-                                            )}
-                                          />
-                                          {item.name}
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
-                                  </CommandList>
-                                </Command>
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={salesForm.control}
-                        name="quantity"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Quantity</FormLabel>
-                            <FormControl>
-                              <Input type="number" placeholder="1" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                       <DialogFooter>
-                        <Button type="submit">
-                            {editingSale ? 'Update Sale' : 'Add Sale'}
-                        </Button>
-                      </DialogFooter>
-                    </form>
-                  </Form>
-                </DialogContent>
-            </Dialog>
         </CardHeader>
       </Card>
 
@@ -302,7 +108,7 @@ export default function SalesPage() {
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setEditingSale(sale)}>
+                                <DropdownMenuItem onClick={() => setEditingSale(sale)} disabled>
                                     <Pencil className="mr-2 h-4 w-4" />
                                     Edit
                                 </DropdownMenuItem>
