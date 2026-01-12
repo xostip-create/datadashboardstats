@@ -47,17 +47,6 @@ function NairaIcon({ className }: { className?: string }) {
   );
 }
 
-function FormattedTime({ date }: { date: any }) {
-    const [time, setTime] = React.useState('');
-    React.useEffect(() => {
-        if (date) {
-            const d = date.toDate ? date.toDate() : new Date(date);
-            setTime(d.toLocaleTimeString());
-        }
-    }, [date]);
-    return <>{time}</>;
-}
-
 export default function RecordsPage() {
   const router = useRouter();
   const firestore = useFirestore();
@@ -243,7 +232,6 @@ export default function RecordsPage() {
                       <TableHead>Item</TableHead>
                       <TableHead className="text-right">Quantity</TableHead>
                       <TableHead className="text-right">Total Price</TableHead>
-                      <TableHead className="text-right">Time</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -251,7 +239,7 @@ export default function RecordsPage() {
                         sortedSaleDates.map(date => (
                             <React.Fragment key={date}>
                                 <TableRow className="bg-muted/50 hover:bg-muted/50">
-                                    <TableCell colSpan={4} className="font-bold text-muted-foreground">
+                                    <TableCell colSpan={3} className="font-bold text-muted-foreground">
                                         {format(new Date(date), 'EEEE, MMMM d, yyyy')}
                                     </TableCell>
                                 </TableRow>
@@ -268,9 +256,6 @@ export default function RecordsPage() {
                                             <TableCell className="text-right whitespace-nowrap">
                                             ₦{(sale.quantity * (item?.unitPrice || 0)).toFixed(2)}
                                             </TableCell>
-                                            <TableCell className="text-right">
-                                            <FormattedTime date={sale.saleDate} />
-                                            </TableCell>
                                         </TableRow>
                                     );
                                 })}
@@ -278,7 +263,7 @@ export default function RecordsPage() {
                         ))
                     ) : (
                         <TableRow>
-                            <TableCell colSpan={4} className="text-center text-muted-foreground">
+                            <TableCell colSpan={3} className="text-center text-muted-foreground">
                                 No sales recorded yet.
                             </TableCell>
                         </TableRow>

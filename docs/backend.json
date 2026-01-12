@@ -45,8 +45,8 @@
         },
         "saleDate": {
           "type": "string",
-          "description": "The date and time of the sale.",
-          "format": "date-time"
+          "description": "The date of the sale.",
+          "format": "date"
         }
       },
       "required": [
