@@ -38,10 +38,10 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { doc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, collection, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
@@ -55,7 +55,7 @@ function getSaleFormSchema(stockData: { itemId: string; quantity: number }[]) {
         quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
     }).refine((data) => {
         const stockItem = stockData.find(s => s.itemId === data.itemId);
-        if (!stockItem) return true; // Let other validations handle missing item
+        if (!stockItem) return true; 
         const availableStock = stockItem.quantity;
         return data.quantity <= availableStock;
     }, {
@@ -83,6 +83,7 @@ export default function SalesPage() {
 
   const [saleToDelete, setSaleToDelete] = React.useState<Sale | null>(null);
   const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false);
+
 
   const saleFormSchema = React.useMemo(() => {
     const stockData = stock ? stock.map(s => ({ itemId: s.itemId, quantity: s.quantity })) : [];
@@ -146,65 +147,53 @@ export default function SalesPage() {
     setIsConfirmingDelete(true);
   };
 
-  const handleConfirmDelete = () => {
-    // The actual deletion is handled by the useEffect hook
-    // This just closes the dialog
-    setIsConfirmingDelete(false);
-  };
-
   const handleCancelDelete = () => {
     setSaleToDelete(null);
     setIsConfirmingDelete(false);
   };
+  
+  const handleConfirmDelete = async () => {
+    if (!saleToDelete || !firestore) return;
 
-  React.useEffect(() => {
-      async function deleteSale() {
-          if (!saleToDelete || !firestore) return;
+    const stockItem = stock?.find(s => s.itemId === saleToDelete.itemId);
+    if (!stockItem) {
+        toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Could not find stock to return for this sale.",
+        });
+        setSaleToDelete(null);
+        setIsConfirmingDelete(false);
+        return;
+    }
 
-          const stockItem = stock?.find(s => s.itemId === saleToDelete.itemId);
-          if (!stockItem) {
-              toast({
-                  variant: "destructive",
-                  title: "Error",
-                  description: "Could not find stock to return for this sale.",
-              });
-              setSaleToDelete(null); // Reset state
-              return;
-          }
+    const batch = writeBatch(firestore);
+    const saleRef = doc(firestore, 'sales', saleToDelete.id);
+    batch.delete(saleRef);
+    
+    const stockRef = doc(firestore, 'stockLevels', stockItem.id);
+    const newQuantity = stockItem.quantity + saleToDelete.quantity;
+    batch.update(stockRef, { quantity: newQuantity });
 
-          const batch = writeBatch(firestore);
-          const saleRef = doc(firestore, 'sales', saleToDelete.id);
-          batch.delete(saleRef);
-          
-          const stockRef = doc(firestore, 'stockLevels', stockItem.id);
-          const newQuantity = stockItem.quantity + saleToDelete.quantity;
-          batch.update(stockRef, { quantity: newQuantity });
-
-          try {
-            await batch.commit();
-            toast({
-                title: 'Sale Deleted',
-                description: 'The sale record has been removed and stock was returned.',
-                variant: 'destructive'
-            });
-          } catch(e) {
-            console.error("Failed to delete sale:", e)
-            toast({
-              variant: "destructive",
-              title: "Error",
-              description: "Failed to delete the sale record.",
-            });
-          } finally {
-            setSaleToDelete(null); // Reset state after operation
-          }
-      }
-      
-      // We only run delete if the dialog has been closed *after* a sale was selected
-      if (saleToDelete && !isConfirmingDelete) {
-        deleteSale();
-      }
-  }, [saleToDelete, isConfirmingDelete, firestore, stock, toast]);
-
+    try {
+      await batch.commit();
+      toast({
+          title: 'Sale Deleted',
+          description: 'The sale record has been removed and stock was returned.',
+          variant: 'destructive'
+      });
+    } catch(e) {
+      console.error("Failed to delete sale:", e)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete the sale record.",
+      });
+    } finally {
+      setSaleToDelete(null);
+      setIsConfirmingDelete(false);
+    }
+  };
 
   const selectedItemStock = stock?.find(s => s.itemId === form.watch('itemId'))?.quantity;
 
@@ -245,25 +234,17 @@ export default function SalesPage() {
                                         </FormControl>
                                     </PopoverTrigger>
                                     <PopoverContent className="w-full p-0" align="start">
-                                        <Command
-                                            filter={(value, search) => {
-                                                const item = items?.find(i => i.id === value);
-                                                if (item) {
-                                                    return item.name.toLowerCase().includes(search.toLowerCase()) ? 1 : 0;
-                                                }
-                                                return 0;
-                                            }}
-                                        >
+                                        <Command>
                                             <CommandInput placeholder="Search item..." />
                                             <CommandList>
                                                 <CommandEmpty>No item found.</CommandEmpty>
                                                 <CommandGroup>
                                                     {items?.map((item) => (
                                                     <CommandItem
-                                                        value={item.id}
+                                                        value={item.name}
                                                         key={item.id}
-                                                        onSelect={(currentValue) => {
-                                                            form.setValue("itemId", currentValue === field.value ? "" : currentValue)
+                                                        onSelect={() => {
+                                                            form.setValue("itemId", item.id)
                                                         }}
                                                     >
                                                         <Check
