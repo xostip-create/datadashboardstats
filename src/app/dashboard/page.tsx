@@ -65,22 +65,29 @@ export default function DashboardPage() {
   
   const getStockSummary = React.useCallback(() => {
     if (!stock || !items) return [];
-    const salesByItem = getSalesByItem();
-    return stock.map(stockItem => {
-        const item = items.find(i => i.id === stockItem.itemId);
-        const saleInfo = salesByItem.find(s => s.name === item?.name);
-        const sold = saleInfo?.quantity || 0;
-        const closingStock = stockItem.openingStock - sold;
+    const salesByItem = new Map<string, number>();
+    if(sales) {
+        for (const sale of sales) {
+            const existing = salesByItem.get(sale.itemId) || 0;
+            salesByItem.set(sale.itemId, existing + sale.quantity);
+        }
+    }
+
+    return items.map(item => {
+        const stockItem = stock.find(s => s.itemId === item.id);
+        const opening = stockItem?.quantity || 0;
+        const sold = salesByItem.get(item.id) || 0;
+        const closing = opening - sold;
 
         return {
-            id: item?.id || '',
-            name: item?.name || 'Unknown',
-            opening: stockItem.openingStock,
+            id: item.id,
+            name: item.name,
+            opening,
             sold,
-            closing: closingStock,
+            closing,
         };
     });
-  }, [stock, items, getSalesByItem]);
+  }, [stock, items, sales]);
 
   const salesSummary = getSalesByItem();
   const stockSummary = getStockSummary();

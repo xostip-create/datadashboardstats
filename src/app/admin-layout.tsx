@@ -42,11 +42,6 @@ const menuItems = [
     icon: ShoppingCart,
   },
   {
-    href: '/stock',
-    label: 'Stock',
-    icon: Boxes,
-  },
-  {
     href: '/items',
     label: 'Items',
     icon: Package,

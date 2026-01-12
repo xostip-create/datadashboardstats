@@ -10,7 +10,7 @@ import {
   Pencil,
   Trash2,
 } from 'lucide-react';
-import type { Item } from '@/lib/data';
+import type { Item, StockLevel } from '@/lib/data';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -55,11 +55,12 @@ import {
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { collection, doc, writeBatch, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, writeBatch, updateDoc, deleteDoc, getDocs, query, where } from 'firebase/firestore';
 
 const itemFormSchema = z.object({
   name: z.string().min(1, 'Item name is required.'),
   unitPrice: z.coerce.number().min(0.01, 'Price must be greater than 0.'),
+  quantity: z.coerce.number().min(0, 'Quantity cannot be negative.'),
 });
 
 type ItemFormValues = z.infer<typeof itemFormSchema>;
@@ -67,9 +68,9 @@ type ItemFormValues = z.infer<typeof itemFormSchema>;
 export default function ItemsPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { items } = useDataContext();
+  const { items, stock } = useDataContext();
 
-  const [editingItem, setEditingItem] = React.useState<Item | null>(null);
+  const [editingItem, setEditingItem] = React.useState<(Item & { stockId?: string, quantity?: number }) | null>(null);
   const [isModalOpen, setModalOpen] = React.useState(false);
   const [isMounted, setIsMounted] = React.useState(false);
 
@@ -82,28 +83,59 @@ export default function ItemsPage() {
     defaultValues: {
       name: '',
       unitPrice: 0,
+      quantity: 0,
     },
   });
+
+  const handleEdit = (item: Item) => {
+    const stockItem = stock?.find(s => s.itemId === item.id);
+    setEditingItem({
+        ...item,
+        stockId: stockItem?.id,
+        quantity: stockItem?.quantity || 0
+    });
+  }
 
   React.useEffect(() => {
     if (editingItem) {
         form.setValue('name', editingItem.name);
         form.setValue('unitPrice', editingItem.unitPrice);
+        form.setValue('quantity', editingItem.quantity || 0);
         setModalOpen(true);
     } else {
-        form.reset({ name: '', unitPrice: 0 });
+        form.reset({ name: '', unitPrice: 0, quantity: 0 });
     }
   }, [editingItem, form]);
 
   const onSubmit = async (data: ItemFormValues) => {
     if (!firestore) return;
     if (editingItem) {
-      // Update item
+      // Update item and stock
       const itemRef = doc(firestore, 'items', editingItem.id);
-      await updateDoc(itemRef, {
+      const batch = writeBatch(firestore);
+
+      batch.update(itemRef, {
         name: data.name,
         unitPrice: data.unitPrice,
       });
+
+      if(editingItem.stockId) {
+        const stockRef = doc(firestore, 'stockLevels', editingItem.stockId);
+        batch.update(stockRef, {
+            quantity: data.quantity
+        });
+      } else {
+        // This case should ideally not happen if stock is created with item
+        const stockRef = doc(collection(firestore, 'stockLevels'));
+        batch.set(stockRef, {
+            id: stockRef.id,
+            itemId: editingItem.id,
+            quantity: data.quantity
+        });
+      }
+
+
+      await batch.commit();
 
       toast({
         title: 'Item Updated',
@@ -112,7 +144,6 @@ export default function ItemsPage() {
     } else {
       // Create new item
       const newItemRef = doc(collection(firestore, 'items'));
-      const today = new Date().toISOString().split('T')[0];
       const newStockRef = doc(collection(firestore, 'stockLevels'));
 
       const batch = writeBatch(firestore);
@@ -126,8 +157,7 @@ export default function ItemsPage() {
       batch.set(newStockRef, {
           id: newStockRef.id,
           itemId: newItemRef.id,
-          date: today,
-          openingStock: 0,
+          quantity: data.quantity,
       });
 
       await batch.commit();
@@ -143,7 +173,22 @@ export default function ItemsPage() {
 
   const handleDeleteItem = async (itemId: string) => {
     if (!firestore) return;
-    await deleteDoc(doc(firestore, 'items', itemId));
+
+    const batch = writeBatch(firestore);
+    
+    // Delete item
+    const itemRef = doc(firestore, 'items', itemId);
+    batch.delete(itemRef);
+
+    // Find and delete associated stock level
+    const stockQuery = query(collection(firestore, 'stockLevels'), where('itemId', '==', itemId));
+    const stockSnapshot = await getDocs(stockQuery);
+    stockSnapshot.forEach(doc => {
+        batch.delete(doc.ref);
+    });
+
+    await batch.commit();
+
     toast({
       title: 'Item Deleted',
       description: 'The item has been removed from inventory.',
@@ -155,6 +200,10 @@ export default function ItemsPage() {
     return null;
   }
 
+  const getItemStock = (itemId: string) => {
+    return stock?.find(s => s.itemId === itemId)?.quantity || 0;
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <Card>
@@ -162,7 +211,7 @@ export default function ItemsPage() {
           <div>
             <CardTitle>Manage Inventory Items</CardTitle>
             <CardDescription>
-              View, create, edit, and delete your bar's items.
+              View, create, and manage your bar's items and stock levels.
             </CardDescription>
           </div>
           <Dialog open={isModalOpen} onOpenChange={(isOpen) => {
@@ -215,6 +264,19 @@ export default function ItemsPage() {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="quantity"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Quantity</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="0" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   
                   <DialogFooter>
                     <Button type="submit">{editingItem ? 'Save Changes' : 'Save Item'}</Button>
@@ -229,6 +291,7 @@ export default function ItemsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Item Name</TableHead>
+                <TableHead className="text-right">Current Stock</TableHead>
                 <TableHead className="text-right">Price</TableHead>
                 <TableHead className="w-[50px]"><span className="sr-only">Actions</span></TableHead>
               </TableRow>
@@ -239,6 +302,7 @@ export default function ItemsPage() {
                   <TableCell className="font-medium whitespace-nowrap flex items-center gap-3">
                     {item.name}
                   </TableCell>
+                  <TableCell className="text-right">{getItemStock(item.id)}</TableCell>
                   <TableCell className="text-right whitespace-nowrap">₦{item.unitPrice.toFixed(2)}</TableCell>
                   <TableCell>
                     <DropdownMenu>
@@ -249,7 +313,7 @@ export default function ItemsPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => setEditingItem(item)}>
+                        <DropdownMenuItem onClick={() => handleEdit(item)}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>

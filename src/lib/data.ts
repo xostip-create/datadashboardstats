@@ -7,8 +7,7 @@ export type Item = {
 export type StockLevel = {
   id: string;
   itemId: string;
-  date: string; // YYYY-MM-DD
-  openingStock: number;
+  quantity: number;
 };
 
 export type Sale = {

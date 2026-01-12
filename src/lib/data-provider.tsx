@@ -28,11 +28,10 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   }, [firestore]);
   const { data: sales } = useCollection<Sale>(salesQuery);
   
-  const today = new Date().toISOString().split('T')[0];
   const stockLevelsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'stockLevels'), where('date', '==', today));
-  }, [firestore, today]);
+    return collection(firestore, 'stockLevels');
+  }, [firestore]);
 
   const { data: stock } = useCollection<StockLevel>(stockLevelsQuery);
 

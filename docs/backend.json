@@ -60,7 +60,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "StockLevel",
       "type": "object",
-      "description": "Represents the stock level of an item on a particular date.",
+      "description": "Represents the stock level of an item.",
       "properties": {
         "id": {
           "type": "string",
@@ -70,21 +70,15 @@
           "type": "string",
           "description": "Reference to Item. (Relationship: Item 1:N StockLevel)"
         },
-        "date": {
-          "type": "string",
-          "description": "The date for which the stock level is recorded.",
-          "format": "date"
-        },
-        "openingStock": {
+        "quantity": {
           "type": "number",
-          "description": "The opening stock quantity for the item on the given date."
+          "description": "The stock quantity for the item."
         }
       },
       "required": [
         "id",
         "itemId",
-        "date",
-        "openingStock"
+        "quantity"
       ]
     }
   },
