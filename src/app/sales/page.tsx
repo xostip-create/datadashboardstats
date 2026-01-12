@@ -11,7 +11,7 @@ import {
   PlusCircle,
   Trash2,
 } from 'lucide-react';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -63,9 +63,16 @@ import {
   writeBatch,
   serverTimestamp,
   deleteDoc,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { startOfDay, endOfDay } from 'date-fns';
+import type { Sale } from '@/lib/data';
 
 export default function SalesPage() {
   const { toast } = useToast();
@@ -107,26 +114,50 @@ export default function SalesPage() {
 
   const onSubmit = async (data: z.infer<ReturnType<typeof getSaleFormSchema>>) => {
     if (!firestore) return;
-
-    const saleRef = doc(collection(firestore, 'sales'));
-
-    const batch = writeBatch(firestore);
-
-    batch.set(saleRef, {
-      id: saleRef.id,
-      itemId: data.itemId,
-      quantity: data.quantity,
-      saleDate: serverTimestamp(),
-    });
-
+  
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
+  
+    const salesCollection = collection(firestore, 'sales');
+    const q = query(salesCollection, 
+        where('itemId', '==', data.itemId),
+        where('saleDate', '>=', todayStart),
+        where('saleDate', '<=', todayEnd)
+    );
+  
     try {
-      await batch.commit();
-      toast({
-        title: 'Sale Logged',
-        description: `A new sale has been successfully recorded.`,
-      });
-      form.reset();
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        // Update existing sale
+        const saleDoc = querySnapshot.docs[0];
+        const existingQuantity = saleDoc.data().quantity || 0;
+        await updateDoc(saleDoc.ref, {
+          quantity: existingQuantity + data.quantity
+        });
+        toast({
+          title: 'Sale Updated',
+          description: `Quantity updated for the existing sale record.`,
+        });
+      } else {
+        // Create new sale
+        const saleRef = doc(collection(firestore, 'sales'));
+        await setDoc(saleRef, {
+          id: saleRef.id,
+          itemId: data.itemId,
+          quantity: data.quantity,
+          saleDate: serverTimestamp(),
+        });
+        toast({
+          title: 'Sale Logged',
+          description: `A new sale has been successfully recorded.`,
+        });
+      }
+  
+      form.reset({ itemId: '', quantity: 1 });
       setSelectedItemStock(null);
+  
     } catch(error: any) {
       toast({
         variant: "destructive",
@@ -139,11 +170,15 @@ export default function SalesPage() {
   const handleDeleteSale = async (saleId: string) => {
     if (!firestore) return;
     
-    if (window.confirm('Are you sure you want to delete this sale?')) {
+    if (window.confirm('Are you sure you want to delete this sale record for today?')) {
       const saleRef = doc(firestore, 'sales', saleId);
       try {
         await deleteDoc(saleRef);
-        // No toast notification to prevent UI freeze
+        toast({
+            title: 'Sale Deleted',
+            description: 'The sale record for today has been removed.',
+            variant: 'destructive',
+        });
       } catch(error: any) {
          toast({
             variant: "destructive",
@@ -153,6 +188,18 @@ export default function SalesPage() {
       }
     }
   };
+
+  const todaySales = React.useMemo(() => {
+    if (!sales) return [];
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const todayEnd = endOfDay(now);
+    return sales.filter(sale => {
+        const saleDate = sale.saleDate?.toDate ? sale.saleDate.toDate() : new Date(sale.saleDate);
+        return saleDate >= todayStart && saleDate <= todayEnd;
+    });
+  }, [sales]);
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -259,7 +306,7 @@ export default function SalesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Today's Sales</CardTitle>
-          <CardDescription>A list of all sales recorded today.</CardDescription>
+          <CardDescription>A consolidated list of all sales recorded today.</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
@@ -272,7 +319,7 @@ export default function SalesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sales?.sort((a,b) => (b.saleDate?.toMillis() ?? 0) - (a.saleDate?.toMillis() ?? 0)).map((sale) => {
+              {todaySales?.sort((a,b) => (b.saleDate?.toMillis() ?? 0) - (a.saleDate?.toMillis() ?? 0)).map((sale) => {
                 const item = items?.find(i => i.id === sale.itemId);
                 return (
                   <TableRow key={sale.id}>
