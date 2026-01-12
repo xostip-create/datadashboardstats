@@ -54,8 +54,7 @@ import type { Shortage } from '@/lib/data';
 import { startOfDay, endOfDay } from 'date-fns';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-
-const STAFF_MEMBERS = ['Staff A', 'Staff B'];
+import { STAFF_MEMBERS } from '@/lib/staff';
 
 const shortageFormSchema = z.object({
   staffName: z.enum(STAFF_MEMBERS as [string, ...string[]], {

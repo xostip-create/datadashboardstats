@@ -27,6 +27,7 @@ import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { STAFF_MEMBERS } from '@/lib/staff';
 
 
 function NairaIcon({ className }: { className?: string }) {
@@ -49,7 +50,6 @@ function NairaIcon({ className }: { className?: string }) {
 }
 
 type ShortageFilter = 'today' | '7days' | '30days' | 'all';
-const STAFF_MEMBERS = ['Staff A', 'Staff B']; // Placeholder staff names
 
 export default function RecordsPage() {
   const firestore = useFirestore();
