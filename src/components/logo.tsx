@@ -10,7 +10,7 @@ export function Logo({ className }: LogoProps) {
     <div className={cn('flex items-center gap-2', className)}>
       <BookMarked className="h-6 w-6 text-primary" />
       <h1 className="text-xl font-bold font-headline tracking-wider">
-        BarBook
+        RecordBook
       </h1>
     </div>
   );

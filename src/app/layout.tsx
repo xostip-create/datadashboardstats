@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase';
 
 export const metadata: Metadata = {
-  title: 'BarBook',
+  title: 'RecordBook',
   description: 'Sales record book for your bar',
 };
 
