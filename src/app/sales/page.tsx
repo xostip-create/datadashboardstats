@@ -5,7 +5,6 @@ import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Check, ChevronsUpDown, PlusCircle, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
-
 import type { Item, Sale } from '@/lib/data';
 import { Button } from '@/components/ui/button';
 import {
@@ -73,7 +72,7 @@ function FormattedTime({ date }: { date: any }) {
 export default function SalesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { items: inventoryData, sales: salesData } = useDataContext();
+  const { items, sales } = useDataContext();
   
   const [isModalOpen, setModalOpen] = React.useState(false);
   const [editingSale, setEditingSale] = React.useState<Sale | null>(null);
@@ -108,9 +107,9 @@ export default function SalesPage() {
 
 
   async function onSaleSubmit(data: SalesFormValues) {
-    if (!firestore || !inventoryData) return;
+    if (!firestore || !items) return;
 
-    const item = inventoryData.find((i) => i.id === data.itemId);
+    const item = items.find((i) => i.id === data.itemId);
     if (!item) return;
 
     if (editingSale) {
@@ -200,7 +199,7 @@ export default function SalesPage() {
                                     )}
                                   >
                                     {field.value
-                                      ? inventoryData?.find(
+                                      ? items?.find(
                                           (item) => item.id === field.value
                                         )?.name
                                       : "Select item"}
@@ -214,12 +213,12 @@ export default function SalesPage() {
                                   <CommandList>
                                     <CommandEmpty>No item found.</CommandEmpty>
                                     <CommandGroup>
-                                      {inventoryData?.map((item) => (
+                                      {items?.map((item) => (
                                         <CommandItem
-                                          value={item.id}
+                                          value={item.name}
                                           key={item.id}
-                                          onSelect={(currentValue) => {
-                                            salesForm.setValue("itemId", currentValue === field.value ? "" : currentValue)
+                                          onSelect={() => {
+                                            salesForm.setValue("itemId", item.id)
                                           }}
                                         >
                                           <Check
@@ -284,8 +283,8 @@ export default function SalesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {salesData?.map((sale) => {
-                const item = inventoryData?.find((i) => i.id === sale.itemId);
+              {sales?.map((sale) => {
+                const item = items?.find((i) => i.id === sale.itemId);
                 return (
                   <TableRow key={sale.id}>
                     <TableCell className="font-medium whitespace-nowrap">{item?.name || 'Unknown'}</TableCell>
