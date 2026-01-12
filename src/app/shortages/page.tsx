@@ -73,6 +73,9 @@ export default function ShortagesPage() {
 
   const form = useForm<ShortageFormValues>({
     resolver: zodResolver(shortageFormSchema),
+    defaultValues: {
+      amount: 0,
+    }
   });
 
   const { todayStart, todayEnd } = React.useMemo(() => {
