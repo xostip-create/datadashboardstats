@@ -127,8 +127,8 @@ export default function RecordsPage() {
   const getStockSummary = React.useCallback(() => {
       if (!stock || !items) return [];
       const salesMap = new Map<string, number>();
-      if (allSales) {
-          for (const sale of allSales) {
+      if (todaySales) {
+          for (const sale of todaySales) {
               const current = salesMap.get(sale.itemId) || 0;
               salesMap.set(sale.itemId, current + sale.quantity);
           }
@@ -138,10 +138,9 @@ export default function RecordsPage() {
           const stockItem = stock.find(s => s.itemId === item.id);
           const opening = stockItem?.quantity || 0;
           const sold = salesMap.get(item.id) || 0;
-          const closing = opening - sold;
-          return { id: item.id, name: item.name, opening, sold, closing };
+          return { id: item.id, name: item.name, opening, sold };
       });
-  }, [stock, items, allSales]);
+  }, [stock, items, todaySales]);
   
   const getSalesGroupedByDate = React.useCallback(() => {
     if (!allSales) return {};
@@ -294,7 +293,7 @@ export default function RecordsPage() {
               <CardHeader>
                 <CardTitle>Stock Summary</CardTitle>
                 <CardDescription>
-                  A public view of current stock levels based on all sales.
+                  A public view of stock levels based on sales for {currentDate}.
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
@@ -303,7 +302,7 @@ export default function RecordsPage() {
                     <TableRow>
                       <TableHead>Item</TableHead>
                       <TableHead className="text-right">Opening</TableHead>
-                      <TableHead className="text-right">Sold</TableHead>
+                      <TableHead className="text-right">Sold Today</TableHead>
                       <TableHead className="text-right">Closing</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -313,7 +312,7 @@ export default function RecordsPage() {
                         <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
                         <TableCell className="text-right">{item.opening}</TableCell>
                         <TableCell className="text-right">{item.sold}</TableCell>
-                        <TableCell className="text-right">{item.closing}</TableCell>
+                        <TableCell className="text-right"></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

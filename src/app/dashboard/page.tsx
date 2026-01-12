@@ -20,6 +20,8 @@ import { useDataContext } from '@/lib/data-provider';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import type { Item, Sale } from '@/lib/data';
+import { startOfDay, endOfDay } from 'date-fns';
+
 
 function NairaIcon({ className }: { className?: string }) {
     return (
@@ -43,10 +45,27 @@ function NairaIcon({ className }: { className?: string }) {
 export default function DashboardPage() {
   const { items, sales, stock } = useDataContext();
 
+  const { todayStart, todayEnd } = React.useMemo(() => {
+    const now = new Date();
+    return {
+      todayStart: startOfDay(now),
+      todayEnd: endOfDay(now),
+    };
+  }, []);
+
+  const todaySales = React.useMemo(() => {
+    if (!sales) return [];
+    return sales.filter(sale => {
+      const saleDate = sale.saleDate?.toDate ? sale.saleDate.toDate() : new Date(sale.saleDate);
+      return saleDate >= todayStart && saleDate <= todayEnd;
+    });
+  }, [sales, todayStart, todayEnd]);
+
+
   const getSalesByItem = React.useCallback(() => {
-    if (!sales || !items) return [];
+    if (!todaySales || !items) return [];
     const salesByItem = new Map<string, { quantity: number; total: number }>();
-    for (const sale of sales) {
+    for (const sale of todaySales) {
       const existing = salesByItem.get(sale.itemId) || { quantity: 0, total: 0 };
       salesByItem.set(sale.itemId, {
         quantity: existing.quantity + sale.quantity,
@@ -61,13 +80,13 @@ export default function DashboardPage() {
         total: data.total,
       };
     });
-  }, [sales, items]);
+  }, [todaySales, items]);
   
   const getStockSummary = React.useCallback(() => {
     if (!stock || !items) return [];
     const salesByItem = new Map<string, number>();
-    if(sales) {
-        for (const sale of sales) {
+    if(todaySales) {
+        for (const sale of todaySales) {
             const existing = salesByItem.get(sale.itemId) || 0;
             salesByItem.set(sale.itemId, existing + sale.quantity);
         }
@@ -77,23 +96,21 @@ export default function DashboardPage() {
         const stockItem = stock.find(s => s.itemId === item.id);
         const opening = stockItem?.quantity || 0;
         const sold = salesByItem.get(item.id) || 0;
-        const closing = opening - sold;
-
+        
         return {
             id: item.id,
             name: item.name,
             opening,
             sold,
-            closing,
         };
     });
-  }, [stock, items, sales]);
+  }, [stock, items, todaySales]);
 
   const salesSummary = getSalesByItem();
   const stockSummary = getStockSummary();
 
-  const totalRevenue = sales ? sales.reduce((acc, sale) => acc + (sale.quantity * (items.find(i => i.id === sale.itemId)?.unitPrice || 0)), 0) : 0;
-  const totalItemsSold = sales ? sales.reduce((acc, sale) => acc + sale.quantity, 0) : 0;
+  const totalRevenue = todaySales ? todaySales.reduce((acc, sale) => acc + (sale.quantity * (items.find(i => i.id === sale.itemId)?.unitPrice || 0)), 0) : 0;
+  const totalItemsSold = todaySales ? todaySales.reduce((acc, sale) => acc + sale.quantity, 0) : 0;
 
   const bestSeller = salesSummary.length > 0 ? salesSummary.reduce((max, item) => item.quantity > max.quantity ? item : max) : null;
 
@@ -163,7 +180,7 @@ export default function DashboardPage() {
                     <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
                     <TableCell className="text-right">{item.opening}</TableCell>
                     <TableCell className="text-right">{item.sold}</TableCell>
-                    <TableCell className="text-right">{item.closing}</TableCell>
+                    <TableCell className="text-right"></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
