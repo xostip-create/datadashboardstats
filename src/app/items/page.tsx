@@ -68,7 +68,7 @@ type ItemFormValues = z.infer<typeof itemFormSchema>;
 export default function ItemsPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { items, stock } = useDataContext();
+  const { items, stock, sales } = useDataContext();
 
   const [editingItem, setEditingItem] = React.useState<(Item & { stockId?: string, quantity?: number }) | null>(null);
   const [isModalOpen, setModalOpen] = React.useState(false);
@@ -201,7 +201,11 @@ export default function ItemsPage() {
   }
 
   const getItemStock = (itemId: string) => {
-    return stock?.find(s => s.itemId === itemId)?.quantity || 0;
+    const openingStock = stock?.find(s => s.itemId === itemId)?.quantity || 0;
+    const soldQuantity = sales
+        ?.filter(sale => sale.itemId === itemId)
+        .reduce((total, sale) => total + sale.quantity, 0) || 0;
+    return openingStock - soldQuantity;
   }
 
   return (
