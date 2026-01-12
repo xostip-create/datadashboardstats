@@ -100,8 +100,7 @@ export default function DashboardPage() {
         return {
             id: item.id,
             name: item.name,
-            opening,
-            sold,
+            remaining: opening - sold,
         };
     });
   }, [stock, items, todaySales]);
@@ -169,18 +168,14 @@ export default function DashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Item</TableHead>
-                  <TableHead className="text-right">Opening</TableHead>
-                  <TableHead className="text-right">Sold</TableHead>
-                  <TableHead className="text-right">Closing</TableHead>
+                  <TableHead className="text-right">Remaining Quantity</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {stockSummary.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
-                    <TableCell className="text-right">{item.opening}</TableCell>
-                    <TableCell className="text-right">{item.sold}</TableCell>
-                    <TableCell className="text-right"></TableCell>
+                    <TableCell className="text-right">{item.remaining}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

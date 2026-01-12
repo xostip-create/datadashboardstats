@@ -138,7 +138,7 @@ export default function RecordsPage() {
           const stockItem = stock.find(s => s.itemId === item.id);
           const opening = stockItem?.quantity || 0;
           const sold = salesMap.get(item.id) || 0;
-          return { id: item.id, name: item.name, opening, sold };
+          return { id: item.id, name: item.name, remaining: opening - sold };
       });
   }, [stock, items, todaySales]);
   
@@ -293,7 +293,7 @@ export default function RecordsPage() {
               <CardHeader>
                 <CardTitle>Stock Summary</CardTitle>
                 <CardDescription>
-                  A public view of stock levels based on sales for {currentDate}.
+                  A public view of remaining stock based on sales for {currentDate}.
                 </CardDescription>
               </CardHeader>
               <CardContent className="overflow-x-auto">
@@ -301,18 +301,14 @@ export default function RecordsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Item</TableHead>
-                      <TableHead className="text-right">Opening</TableHead>
-                      <TableHead className="text-right">Sold Today</TableHead>
-                      <TableHead className="text-right">Closing</TableHead>
+                      <TableHead className="text-right">Remaining Quantity</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {stockSummary.map((item) => (
                       <TableRow key={item.id}>
                         <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
-                        <TableCell className="text-right">{item.opening}</TableCell>
-                        <TableCell className="text-right">{item.sold}</TableCell>
-                        <TableCell className="text-right"></TableCell>
+                        <TableCell className="text-right">{item.remaining}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
