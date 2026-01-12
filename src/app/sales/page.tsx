@@ -11,7 +11,7 @@ import {
   PlusCircle,
   Trash2,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -55,7 +55,6 @@ import {
   CommandItem,
   CommandList,
 } from '@/components/ui/command';
-
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
 import {
@@ -72,6 +71,8 @@ export default function SalesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { items, sales, stock } = useDataContext();
+  const [popoverOpen, setPopoverOpen] = React.useState(false);
+  const [selectedItemStock, setSelectedItemStock] = React.useState<number | null>(null);
 
   const getSaleFormSchema = () => {
     return z.object({
@@ -80,19 +81,19 @@ export default function SalesPage() {
         .number()
         .min(1, 'Quantity must be at least 1.'),
     }).superRefine((data, ctx) => {
-        if (data.itemId) {
-            const stockItem = stock?.find(s => s.itemId === data.itemId);
-            const salesByItem = sales?.filter(s => s.itemId === data.itemId).reduce((acc, sale) => acc + sale.quantity, 0) || 0;
-            const availableStock = (stockItem?.quantity || 0) - salesByItem;
-            
-            if (data.quantity > availableStock) {
-                ctx.addIssue({
-                    code: z.ZodIssueCode.custom,
-                    message: `Not enough stock. Only ${availableStock} available.`,
-                    path: ['quantity'],
-                });
-            }
+      if (data.itemId) {
+        const salesOfItem = sales?.filter(s => s.itemId === data.itemId).reduce((acc, sale) => acc + sale.quantity, 0) || 0;
+        const stockItem = stock?.find(s => s.itemId === data.itemId);
+        const availableStock = (stockItem?.quantity || 0) - salesOfItem;
+        
+        if (data.quantity > availableStock) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Not enough stock. Only ${availableStock} available.`,
+            path: ['quantity'],
+          });
         }
+      }
     });
   }
 
@@ -104,70 +105,52 @@ export default function SalesPage() {
     },
   });
 
-  React.useEffect(() => {
-    form.trigger();
-  }, [stock, sales, form]);
-
   const onSubmit = async (data: z.infer<ReturnType<typeof getSaleFormSchema>>) => {
     if (!firestore) return;
 
     const saleRef = doc(collection(firestore, 'sales'));
-    const stockItem = stock?.find(s => s.itemId === data.itemId);
-
-    if (!stockItem) {
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not find stock for the selected item."
-        });
-        return;
-    }
 
     const batch = writeBatch(firestore);
 
     batch.set(saleRef, {
-        id: saleRef.id,
-        itemId: data.itemId,
-        quantity: data.quantity,
-        saleDate: serverTimestamp(),
+      id: saleRef.id,
+      itemId: data.itemId,
+      quantity: data.quantity,
+      saleDate: serverTimestamp(),
     });
 
     try {
-        await batch.commit();
-        toast({
-            title: 'Sale Logged',
-            description: `A new sale has been successfully recorded.`,
-        });
-        form.reset();
-        const trigger = document.querySelector('#item-combobox-trigger');
-        if (trigger) {
-          trigger.textContent = 'Select item';
-        }
-
+      await batch.commit();
+      toast({
+        title: 'Sale Logged',
+        description: `A new sale has been successfully recorded.`,
+      });
+      form.reset();
+      setSelectedItemStock(null);
     } catch(error: any) {
-        toast({
-            variant: "destructive",
-            title: "Error Logging Sale",
-            description: error.message || "An unexpected error occurred."
-        });
+      toast({
+        variant: "destructive",
+        title: "Error Logging Sale",
+        description: error.message || "An unexpected error occurred."
+      });
     }
   };
 
   const handleDeleteSale = async (saleId: string) => {
     if (!firestore) return;
-
+    
     if (window.confirm('Are you sure you want to delete this sale?')) {
-        const saleRef = doc(firestore, 'sales', saleId);
-        try {
-            await deleteDoc(saleRef);
-            // No toast notification to prevent UI freeze
-        } catch(error: any) {
-             toast({
-                variant: "destructive",
-                title: "Error Deleting Sale",
-                description: error.message || "An unexpected error occurred."
-            });
-        }
+      const saleRef = doc(firestore, 'sales', saleId);
+      try {
+        await deleteDoc(saleRef);
+        // No toast notification to prevent UI freeze
+      } catch(error: any) {
+         toast({
+            variant: "destructive",
+            title: "Error Deleting Sale",
+            description: error.message || "An unexpected error occurred."
+        });
+      }
     }
   };
 
@@ -180,18 +163,17 @@ export default function SalesPage() {
         </CardHeader>
         <CardContent>
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-start">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col sm:flex-row gap-4 sm:items-start">
               <FormField
                 control={form.control}
                 name="itemId"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
+                  <FormItem className="flex flex-col w-full sm:w-auto sm:flex-1">
                     <FormLabel>Item</FormLabel>
-                    <Popover>
+                    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
-                            id="item-combobox-trigger"
                             variant="outline"
                             role="combobox"
                             className={cn(
@@ -219,6 +201,10 @@ export default function SalesPage() {
                                   onSelect={() => {
                                     form.setValue("itemId", item.id);
                                     form.trigger("quantity");
+                                    const stockItem = stock?.find(s => s.itemId === item.id);
+                                    const salesByItem = sales?.filter(s => s.itemId === item.id).reduce((acc, sale) => acc + sale.quantity, 0) || 0;
+                                    setSelectedItemStock((stockItem?.quantity || 0) - salesByItem);
+                                    setPopoverOpen(false);
                                   }}
                                 >
                                   <Check
@@ -237,6 +223,11 @@ export default function SalesPage() {
                         </Command>
                       </PopoverContent>
                     </Popover>
+                    {selectedItemStock !== null && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {selectedItemStock} in stock.
+                      </p>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -245,7 +236,7 @@ export default function SalesPage() {
                 control={form.control}
                 name="quantity"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className='w-full sm:w-auto'>
                     <FormLabel>Quantity</FormLabel>
                     <FormControl>
                       <Input type="number" placeholder="1" {...field} />
@@ -254,7 +245,7 @@ export default function SalesPage() {
                   </FormItem>
                 )}
               />
-              <div className="sm:pt-8">
+              <div className="pt-0 sm:pt-6">
                  <Button type="submit" className="w-full">
                     <PlusCircle className="mr-2 h-4 w-4" />
                     Add Sale
@@ -299,7 +290,10 @@ export default function SalesPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             className="text-destructive hover:!text-destructive"
-                            onSelect={() => handleDeleteSale(sale.id)}
+                            onSelect={(e) => {
+                                e.preventDefault();
+                                handleDeleteSale(sale.id);
+                            }}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
