@@ -22,9 +22,18 @@ import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
 import { collection, query, where } from 'firebase/firestore';
 import type { Item, Sale, StockLevel, Shortage } from '@/lib/data';
-import { Package, Search, ShoppingBag, Users } from 'lucide-react';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { Calendar as CalendarIcon, Package, Search, ShoppingBag, Users } from 'lucide-react';
+import { format, startOfDay, endOfDay, addDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
+import type { DateRange } from "react-day-picker"
 
 
 function NairaIcon({ className }: { className?: string }) {
@@ -51,6 +60,10 @@ export default function RecordsPage() {
 
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
   const [stockSearchTerm, setStockSearchTerm] = React.useState('');
+  const [shortageDateRange, setShortageDateRange] = React.useState<DateRange | undefined>({
+    from: startOfDay(new Date()),
+    to: endOfDay(new Date()),
+  });
 
   // Common queries
   const itemsQuery = useMemoFirebase(() => {
@@ -160,20 +173,46 @@ export default function RecordsPage() {
     }, {} as Record<string, Sale[]>);
   }, [allSales, items, salesSearchTerm]);
 
+  const filteredShortages = React.useMemo(() => {
+    if (!shortages) return [];
+    if (!shortageDateRange?.from) return shortages;
+    
+    const fromDate = startOfDay(shortageDateRange.from);
+    const toDate = shortageDateRange.to ? endOfDay(shortageDateRange.to) : endOfDay(shortageDateRange.from);
+
+    return shortages.filter(shortage => {
+      const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
+      return shortageDate >= fromDate && shortageDate <= toDate;
+    });
+  }, [shortages, shortageDateRange]);
+
+
   const getShortagesGroupedByDate = React.useCallback(() => {
-    if (!shortages) return {};
-    return shortages.reduce((acc, shortage) => {
+    if (!filteredShortages) return { groups: {}, dailyTotals: {}, grandTotal: 0 };
+    
+    let grandTotal = 0;
+    const dailyTotals: Record<string, number> = {};
+
+    const groups = filteredShortages.reduce((acc, shortage) => {
         const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
         const dateKey = format(shortageDate, 'yyyy-MM-dd');
+        
+        grandTotal += shortage.amount;
 
         if (!acc[dateKey]) {
             acc[dateKey] = [];
+            dailyTotals[dateKey] = 0;
         }
+        
         acc[dateKey].push(shortage);
+        dailyTotals[dateKey] += shortage.amount;
+
         acc[dateKey].sort((a, b) => (b.shortageDate?.toMillis() ?? 0) - (a.shortageDate?.toMillis() ?? 0));
         return acc;
     }, {} as Record<string, Shortage[]>);
-    }, [shortages]);
+
+    return { groups, dailyTotals, grandTotal };
+  }, [filteredShortages]);
 
 
   // Data for summary cards (today only)
@@ -195,7 +234,7 @@ export default function RecordsPage() {
   const salesByDate = getSalesGroupedByDate();
   const sortedSaleDates = Object.keys(salesByDate).sort((a, b) => b.localeCompare(a));
   
-  const shortagesByDate = getShortagesGroupedByDate();
+  const { groups: shortagesByDate, dailyTotals: shortageDailyTotals, grandTotal: shortageGrandTotal } = getShortagesGroupedByDate();
   const sortedShortageDates = Object.keys(shortagesByDate).sort((a, b) => b.localeCompare(a));
 
 
@@ -367,43 +406,92 @@ export default function RecordsPage() {
           <TabsContent value="shortages" className="mt-6">
             <Card>
                 <CardHeader>
-                <CardTitle>Shortage History</CardTitle>
-                <CardDescription>A public view of all staff shortages, grouped by date.</CardDescription>
+                  <CardTitle>Shortage History</CardTitle>
+                  <CardDescription>A public view of all staff shortages. Select a date range to view totals.</CardDescription>
+                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          id="date"
+                          variant={"outline"}
+                          className={cn(
+                            "w-[300px] justify-start text-left font-normal",
+                            !shortageDateRange && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {shortageDateRange?.from ? (
+                            shortageDateRange.to ? (
+                              <>
+                                {format(shortageDateRange.from, "LLL dd, y")} -{" "}
+                                {format(shortageDateRange.to, "LLL dd, y")}
+                              </>
+                            ) : (
+                              format(shortageDateRange.from, "LLL dd, y")
+                            )
+                          ) : (
+                            <span>Pick a date range</span>
+                          )}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          initialFocus
+                          mode="range"
+                          defaultMonth={shortageDateRange?.from}
+                          selected={shortageDateRange}
+                          onSelect={setShortageDateRange}
+                          numberOfMonths={2}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
-                <Table>
-                    <TableHeader>
-                    <TableRow>
-                        <TableHead>Staff Name</TableHead>
-                        <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                    {sortedShortageDates.length > 0 ? (
-                        sortedShortageDates.map(date => (
-                        <React.Fragment key={date}>
-                            <TableRow className="bg-muted/50 hover:bg-muted/50">
-                            <TableCell colSpan={2} className="font-bold text-muted-foreground">
-                                {format(new Date(date), 'EEEE, MMMM d, yyyy')}
+                    <Card className="mb-4">
+                        <CardHeader className="p-4">
+                            <CardTitle className='text-base'>Total Shortage for Period</CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 pt-0">
+                            <div className="text-2xl font-bold">₦{shortageGrandTotal.toFixed(2)}</div>
+                        </CardContent>
+                    </Card>
+                    <Table>
+                        <TableHeader>
+                        <TableRow>
+                            <TableHead>Staff Name</TableHead>
+                            <TableHead className="text-right">Amount</TableHead>
+                        </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                        {sortedShortageDates.length > 0 ? (
+                            sortedShortageDates.map(date => (
+                            <React.Fragment key={date}>
+                                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                                    <TableCell className="font-bold text-muted-foreground">
+                                        {format(new Date(date), 'EEEE, MMMM d, yyyy')}
+                                    </TableCell>
+                                    <TableCell className="text-right font-bold text-muted-foreground">
+                                        Total: ₦{shortageDailyTotals[date]?.toFixed(2) || '0.00'}
+                                    </TableCell>
+                                </TableRow>
+                                {shortagesByDate[date].map(shortage => (
+                                <TableRow key={shortage.id}>
+                                    <TableCell className="font-medium whitespace-nowrap">{shortage.staffName}</TableCell>
+                                    <TableCell className="text-right whitespace-nowrap">₦{shortage.amount.toFixed(2)}</TableCell>
+                                </TableRow>
+                                ))}
+                            </React.Fragment>
+                            ))
+                        ) : (
+                            <TableRow>
+                            <TableCell colSpan={2} className="text-center text-muted-foreground">
+                                'No shortages recorded for the selected period.'
                             </TableCell>
                             </TableRow>
-                            {shortagesByDate[date].map(shortage => (
-                            <TableRow key={shortage.id}>
-                                <TableCell className="font-medium whitespace-nowrap">{shortage.staffName}</TableCell>
-                                <TableCell className="text-right whitespace-nowrap">₦{shortage.amount.toFixed(2)}</TableCell>
-                            </TableRow>
-                            ))}
-                        </React.Fragment>
-                        ))
-                    ) : (
-                        <TableRow>
-                        <TableCell colSpan={2} className="text-center text-muted-foreground">
-                           'No shortages recorded yet.'
-                        </TableCell>
-                        </TableRow>
-                    )}
-                    </TableBody>
-                </Table>
+                        )}
+                        </TableBody>
+                    </Table>
                 </CardContent>
             </Card>
             </TabsContent>
