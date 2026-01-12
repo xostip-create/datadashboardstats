@@ -75,9 +75,15 @@ export default function RecordsPage() {
   }, [firestore]);
   const { data: stock } = useCollection<StockLevel>(stockLevelsQuery);
 
-  // Queries for today's data (for summary cards)
-  const todayStart = startOfDay(new Date());
-  const todayEnd = endOfDay(new Date());
+  // Memoize today's date boundaries to prevent re-renders
+  const { todayStart, todayEnd } = React.useMemo(() => {
+    const now = new Date();
+    return {
+      todayStart: startOfDay(now),
+      todayEnd: endOfDay(now),
+    };
+  }, []);
+
 
   const todaySalesQuery = useMemoFirebase(() => {
     if (!firestore) return null;
