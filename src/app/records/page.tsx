@@ -24,8 +24,9 @@ import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
 import { collection, query, where, Timestamp } from 'firebase/firestore';
 import type { Item, Sale, StockLevel } from '@/lib/data';
-import { Package, ShoppingBag } from 'lucide-react';
+import { Package, Search, ShoppingBag } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
+import { Input } from '@/components/ui/input';
 
 
 function NairaIcon({ className }: { className?: string }) {
@@ -50,6 +51,9 @@ function NairaIcon({ className }: { className?: string }) {
 export default function RecordsPage() {
   const router = useRouter();
   const firestore = useFirestore();
+
+  const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
+  const [stockSearchTerm, setStockSearchTerm] = React.useState('');
 
   // Common queries
   const itemsQuery = useMemoFirebase(() => {
@@ -132,10 +136,16 @@ export default function RecordsPage() {
   }, [stock, items, todaySales]);
   
   const getSalesGroupedByDate = React.useCallback(() => {
-    if (!allSales) return {};
+    if (!allSales || !items) return {};
     return allSales.reduce((acc, sale) => {
+        const itemName = items.find(i => i.id === sale.itemId)?.name || '';
+        if (salesSearchTerm && !itemName.toLowerCase().includes(salesSearchTerm.toLowerCase())) {
+          return acc;
+        }
+
         const saleDate = sale.saleDate?.toDate ? sale.saleDate.toDate() : new Date(sale.saleDate);
         const dateKey = format(saleDate, 'yyyy-MM-dd');
+
         if (!acc[dateKey]) {
             acc[dateKey] = [];
         }
@@ -144,7 +154,7 @@ export default function RecordsPage() {
         acc[dateKey].sort((a, b) => (b.saleDate?.toMillis() ?? 0) - (a.saleDate?.toMillis() ?? 0));
         return acc;
     }, {} as Record<string, Sale[]>);
-  }, [allSales]);
+  }, [allSales, items, salesSearchTerm]);
 
 
   // Data for summary cards (today only)
@@ -155,7 +165,14 @@ export default function RecordsPage() {
   const currentDate = format(new Date(), 'MMMM d, yyyy');
 
   // Data for tables
-  const stockSummary = getStockSummary();
+  const stockSummary = React.useMemo(() => {
+    const summary = getStockSummary();
+    if (!stockSearchTerm) return summary;
+    return summary.filter(item =>
+      item.name.toLowerCase().includes(stockSearchTerm.toLowerCase())
+    );
+  }, [getStockSummary, stockSearchTerm]);
+  
   const salesByDate = getSalesGroupedByDate();
   const sortedSaleDates = Object.keys(salesByDate).sort((a, b) => b.localeCompare(a));
 
@@ -224,6 +241,15 @@ export default function RecordsPage() {
                 <CardDescription>
                   A public view of all sales transactions, grouped by date.
                 </CardDescription>
+                <div className="relative mt-2">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search sales by item..."
+                    className="pl-8 w-full sm:w-64"
+                    value={salesSearchTerm}
+                    onChange={(e) => setSalesSearchTerm(e.target.value)}
+                  />
+                </div>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <Table>
@@ -264,7 +290,7 @@ export default function RecordsPage() {
                     ) : (
                         <TableRow>
                             <TableCell colSpan={3} className="text-center text-muted-foreground">
-                                No sales recorded yet.
+                                {salesSearchTerm ? `No sales found for "${salesSearchTerm}"` : 'No sales recorded yet.'}
                             </TableCell>
                         </TableRow>
                     )}
@@ -280,6 +306,15 @@ export default function RecordsPage() {
                 <CardDescription>
                   A public view of remaining stock based on sales for {currentDate}.
                 </CardDescription>
+                 <div className="relative mt-2">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search stock by item..."
+                    className="pl-8 w-full sm:w-64"
+                    value={stockSearchTerm}
+                    onChange={(e) => setStockSearchTerm(e.target.value)}
+                  />
+                </div>
               </CardHeader>
               <CardContent className="overflow-x-auto">
                 <Table>
@@ -290,12 +325,20 @@ export default function RecordsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {stockSummary.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
-                        <TableCell className="text-right">{item.remaining}</TableCell>
-                      </TableRow>
-                    ))}
+                    {stockSummary.length > 0 ? (
+                        stockSummary.map((item) => (
+                        <TableRow key={item.id}>
+                            <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
+                            <TableCell className="text-right">{item.remaining}</TableCell>
+                        </TableRow>
+                        ))
+                    ) : (
+                        <TableRow>
+                            <TableCell colSpan={2} className="text-center text-muted-foreground">
+                                {stockSearchTerm ? `No stock found for "${stockSearchTerm}"` : 'No stock data available.'}
+                            </TableCell>
+                        </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </CardContent>
