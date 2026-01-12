@@ -11,7 +11,7 @@ import {
   PlusCircle,
   Trash2,
 } from 'lucide-react';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -43,14 +43,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -65,7 +57,6 @@ import {
 } from '@/components/ui/command';
 
 import { useDataContext } from '@/lib/data-provider';
-import type { Sale } from '@/lib/data';
 import { useFirestore } from '@/firebase';
 import {
   collection,
@@ -81,9 +72,6 @@ export default function SalesPage() {
   const { toast } = useToast();
   const firestore = useFirestore();
   const { items, sales, stock } = useDataContext();
-
-  const [deleteSaleId, setDeleteSaleId] = React.useState<string | null>(null);
-  const [isDeleteConfirmationOpen, setDeleteConfirmationOpen] = React.useState(false);
 
   const getSaleFormSchema = () => {
     return z.object({
@@ -165,34 +153,23 @@ export default function SalesPage() {
     }
   };
 
-  const handleDeleteSale = async () => {
-    if (!firestore || !deleteSaleId) return;
+  const handleDeleteSale = async (saleId: string) => {
+    if (!firestore) return;
 
-    const saleToDelete = sales?.find(s => s.id === deleteSaleId);
-    if (!saleToDelete) return;
-
-    const saleRef = doc(firestore, 'sales', saleToDelete.id);
-    
-    try {
-        await deleteDoc(saleRef);
-    } catch(error: any) {
-         toast({
-            variant: "destructive",
-            title: "Error Deleting Sale",
-            description: error.message || "An unexpected error occurred."
-        });
-    } finally {
-        setDeleteSaleId(null);
-        setDeleteConfirmationOpen(false);
+    if (window.confirm('Are you sure you want to delete this sale?')) {
+        const saleRef = doc(firestore, 'sales', saleId);
+        try {
+            await deleteDoc(saleRef);
+            // No toast notification to prevent UI freeze
+        } catch(error: any) {
+             toast({
+                variant: "destructive",
+                title: "Error Deleting Sale",
+                description: error.message || "An unexpected error occurred."
+            });
+        }
     }
   };
-  
-  const openDeleteDialog = (saleId: string) => {
-    setDeleteSaleId(saleId);
-    setDeleteConfirmationOpen(true);
-  }
-
-  const getItemName = (itemId: string) => items?.find(i => i.id === itemId)?.name || 'Unknown Item';
 
   return (
     <div className="flex flex-col gap-6">
@@ -322,7 +299,7 @@ export default function SalesPage() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             className="text-destructive hover:!text-destructive"
-                            onSelect={() => openDeleteDialog(sale.id)}
+                            onSelect={() => handleDeleteSale(sale.id)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
@@ -337,26 +314,6 @@ export default function SalesPage() {
           </Table>
         </CardContent>
       </Card>
-
-       <Dialog open={isDeleteConfirmationOpen} onOpenChange={setDeleteConfirmationOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Are you absolutely sure?</DialogTitle>
-            <DialogDescription>
-              This action cannot be undone. This will permanently delete the sale record.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmationOpen(false)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteSale}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
