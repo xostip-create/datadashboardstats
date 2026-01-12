@@ -9,11 +9,6 @@ import {
   PlusCircle,
   Pencil,
   Trash2,
-  Beer,
-  Wine,
-  GlassWater,
-  Beef,
-  Bot,
 } from 'lucide-react';
 import type { Item } from '@/lib/data';
 import { Button } from '@/components/ui/button';
@@ -50,13 +45,6 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -67,7 +55,7 @@ import {
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { collection, doc, addDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, writeBatch, updateDoc, deleteDoc } from 'firebase/firestore';
 
 const itemFormSchema = z.object({
   name: z.string().min(1, 'Item name is required.'),
@@ -83,6 +71,11 @@ export default function ItemsPage() {
 
   const [editingItem, setEditingItem] = React.useState<Item | null>(null);
   const [isModalOpen, setModalOpen] = React.useState(false);
+  const [isMounted, setIsMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const form = useForm<ItemFormValues>({
     resolver: zodResolver(itemFormSchema),
@@ -135,7 +128,6 @@ export default function ItemsPage() {
           itemId: newItemRef.id,
           date: today,
           openingStock: 0,
-          closingStock: 0,
       });
 
       await batch.commit();
@@ -158,6 +150,10 @@ export default function ItemsPage() {
       variant: 'destructive',
     });
   };
+
+  if (!isMounted) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-6">
