@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { BookMarked } from 'lucide-react';
+import { BookOpenCheck } from 'lucide-react';
 
 type LogoProps = {
   className?: string;
@@ -8,7 +8,7 @@ type LogoProps = {
 export function Logo({ className }: LogoProps) {
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <BookMarked className="h-6 w-6 text-primary" />
+      <BookOpenCheck className="h-6 w-6 text-primary" />
       <h1 className="text-xl font-bold font-headline tracking-wider">
         RecordBook
       </h1>
