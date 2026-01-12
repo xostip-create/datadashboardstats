@@ -86,29 +86,38 @@ export default function StockPage() {
                     const yesterdayStock = yesterdayStockMap.get(item.id);
                     let opening = 0;
                     if (yesterdayStock) {
-                        const yesterdaySalesQuery = query(collection(firestore, 'sales'), where('saleDate', '>=', getStartOfDay(yesterday)), where('saleDate', '<', getStartOfDay(new Date())));
+                        const startOfYesterday = getStartOfDay(yesterday);
+                        const endOfYesterday = new Date(startOfYesterday);
+                        endOfYesterday.setHours(23, 59, 59, 999);
+
+                        const yesterdaySalesQuery = query(
+                            collection(firestore, 'sales'), 
+                            where('saleDate', '>=', Timestamp.fromDate(startOfYesterday)), 
+                            where('saleDate', '<=', Timestamp.fromDate(endOfYesterday))
+                        );
                         const yesterdaySalesSnapshot = await getDocs(yesterdaySalesQuery);
                         const yesterdaySalesByItem = new Map<string, number>();
                         yesterdaySalesSnapshot.forEach(doc => {
                             const sale = doc.data();
-                            const existing = yesterdaySalesByItem.get(sale.itemId) || 0;
-                            yesterdaySalesByItem.set(sale.itemId, existing + sale.quantity);
+                            if(sale.itemId === item.id) {
+                                const existing = yesterdaySalesByItem.get(sale.itemId) || 0;
+                                yesterdaySalesByItem.set(sale.itemId, existing + sale.quantity);
+                            }
                         });
                         const soldYesterday = yesterdaySalesByItem.get(item.id) || 0;
                         opening = yesterdayStock.openingStock - soldYesterday;
                     }
-                    newOpeningStock.set(item.id, opening);
+                    newOpeningStock.set(item.id, opening < 0 ? 0 : opening);
                     
                     const todayStockRef = doc(collection(firestore, 'stockLevels'));
                     batch.set(todayStockRef, {
                         id: todayStockRef.id,
                         itemId: item.id,
                         date: today,
-                        openingStock: opening,
-                        closingStock: 0, // This is a placeholder, it's calculated
+                        openingStock: opening < 0 ? 0 : opening,
                     });
                 }
-                if (items.length > 0) {
+                if (items.length > 0 && todaySnapshot.empty) {
                     await batch.commit();
                 }
             }

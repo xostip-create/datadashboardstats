@@ -78,10 +78,6 @@
         "openingStock": {
           "type": "number",
           "description": "The opening stock quantity for the item on the given date."
-        },
-        "closingStock": {
-          "type": "number",
-          "description": "The closing stock quantity for the item on the given date. This is now calculated automatically."
         }
       },
       "required": [
