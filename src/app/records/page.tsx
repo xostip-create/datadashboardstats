@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import type { DateRange } from "react-day-picker"
+import { useIsMobile } from '@/hooks/use-mobile';
 
 
 function NairaIcon({ className }: { className?: string }) {
@@ -57,6 +58,7 @@ function NairaIcon({ className }: { className?: string }) {
 
 export default function RecordsPage() {
   const firestore = useFirestore();
+  const isMobile = useIsMobile();
 
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
   const [stockSearchTerm, setStockSearchTerm] = React.useState('');
@@ -288,7 +290,7 @@ export default function RecordsPage() {
         </div>
 
         <Tabs defaultValue="sales">
-          <TabsList className="grid w-full grid-cols-3 max-w-sm">
+          <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 max-w-xs sm:max-w-sm mx-auto sm:mx-0">
             <TabsTrigger value="sales">Sales Records</TabsTrigger>
             <TabsTrigger value="stock">Stock Summary</TabsTrigger>
             <TabsTrigger value="shortages">Shortages</TabsTrigger>
@@ -415,7 +417,7 @@ export default function RecordsPage() {
                           id="date"
                           variant={"outline"}
                           className={cn(
-                            "w-[300px] justify-start text-left font-normal",
+                            "w-full sm:w-[300px] justify-start text-left font-normal",
                             !shortageDateRange && "text-muted-foreground"
                           )}
                         >
@@ -441,7 +443,7 @@ export default function RecordsPage() {
                           defaultMonth={shortageDateRange?.from}
                           selected={shortageDateRange}
                           onSelect={setShortageDateRange}
-                          numberOfMonths={2}
+                          numberOfMonths={isMobile ? 1 : 2}
                         />
                       </PopoverContent>
                     </Popover>
@@ -500,3 +502,5 @@ export default function RecordsPage() {
     </div>
   );
 }
+
+    
