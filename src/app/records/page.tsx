@@ -22,7 +22,7 @@ import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
 import { collection, query, where } from 'firebase/firestore';
 import type { Item, Sale, StockLevel, Shortage } from '@/lib/data';
-import { Package, Search, ShoppingBag } from 'lucide-react';
+import { Package, Search, ShoppingBag, User } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { Input } from '@/components/ui/input';
 import { Button } from "@/components/ui/button"
@@ -49,6 +49,7 @@ function NairaIcon({ className }: { className?: string }) {
 }
 
 type ShortageFilter = 'today' | '7days' | '30days' | 'all';
+const STAFF_MEMBERS = ['Staff A', 'Staff B']; // Placeholder staff names
 
 export default function RecordsPage() {
   const firestore = useFirestore();
@@ -56,6 +57,7 @@ export default function RecordsPage() {
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
   const [stockSearchTerm, setStockSearchTerm] = React.useState('');
   const [shortageFilter, setShortageFilter] = React.useState<ShortageFilter>('today');
+  const [selectedStaff, setSelectedStaff] = React.useState<string | null>(STAFF_MEMBERS[0]);
 
   // Common queries
   const itemsQuery = useMemoFirebase(() => {
@@ -166,8 +168,9 @@ export default function RecordsPage() {
   }, [allSales, items, salesSearchTerm]);
 
   const filteredShortages = React.useMemo(() => {
-    if (!shortages) return [];
+    if (!shortages || !selectedStaff) return [];
 
+    let dateFilteredShortages;
     const now = new Date();
     let fromDate;
     
@@ -182,21 +185,29 @@ export default function RecordsPage() {
             fromDate = startOfDay(subDays(now, 29));
             break;
         case 'all':
-            return shortages;
+            dateFilteredShortages = shortages;
+            break;
     }
 
-    return shortages.filter(shortage => {
-      const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
-      return shortageDate >= fromDate;
-    });
-  }, [shortages, shortageFilter]);
+    if (fromDate) {
+        dateFilteredShortages = shortages.filter(shortage => {
+            const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
+            return shortageDate >= fromDate;
+        });
+    } else {
+        dateFilteredShortages = shortages;
+    }
+
+    // Now filter by selected staff
+    return dateFilteredShortages.filter(shortage => shortage.staffName === selectedStaff);
+
+  }, [shortages, shortageFilter, selectedStaff]);
 
 
   const getShortagesGroupedByDate = React.useCallback(() => {
-    if (!filteredShortages) return { groups: {}, dailyTotals: {}, grandTotal: 0 };
+    if (!filteredShortages) return { groups: {}, grandTotal: 0 };
     
     let grandTotal = 0;
-    const dailyTotals: Record<string, number> = {};
 
     const groups = filteredShortages.reduce((acc, shortage) => {
         const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
@@ -206,17 +217,15 @@ export default function RecordsPage() {
 
         if (!acc[dateKey]) {
             acc[dateKey] = [];
-            dailyTotals[dateKey] = 0;
         }
         
         acc[dateKey].push(shortage);
-        dailyTotals[dateKey] += shortage.amount;
 
         acc[dateKey].sort((a, b) => (b.shortageDate?.toMillis() ?? 0) - (a.shortageDate?.toMillis() ?? 0));
         return acc;
     }, {} as Record<string, Shortage[]>);
 
-    return { groups, dailyTotals, grandTotal };
+    return { groups, grandTotal };
   }, [filteredShortages]);
 
 
@@ -239,7 +248,7 @@ export default function RecordsPage() {
   const salesByDate = getSalesGroupedByDate();
   const sortedSaleDates = Object.keys(salesByDate).sort((a, b) => b.localeCompare(a));
   
-  const { groups: shortagesByDate, dailyTotals: shortageDailyTotals, grandTotal: shortageGrandTotal } = getShortagesGroupedByDate();
+  const { groups: shortagesByDate, grandTotal: shortageGrandTotal } = getShortagesGroupedByDate();
   const sortedShortageDates = Object.keys(shortagesByDate).sort((a, b) => b.localeCompare(a));
 
 
@@ -411,68 +420,101 @@ export default function RecordsPage() {
           <TabsContent value="shortages" className="mt-6">
             <Card>
                 <CardHeader>
-                  <CardTitle>Shortage History</CardTitle>
-                  <CardDescription>A public view of all staff shortages. Select a filter to view totals.</CardDescription>
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {(['today', '7days', '30days', 'all'] as ShortageFilter[]).map(filter => (
-                      <Button
-                        key={filter}
-                        variant={shortageFilter === filter ? 'default' : 'outline'}
-                        onClick={() => setShortageFilter(filter)}
-                      >
-                        {filter === 'today' && 'Today'}
-                        {filter === '7days' && 'Last 7 Days'}
-                        {filter === '30days' && 'Last 30 Days'}
-                        {filter === 'all' && 'All Time'}
-                      </Button>
-                    ))}
+                  <CardTitle>Shortage Calculator</CardTitle>
+                  <CardDescription>Select a staff member and a time period to calculate their total shortage.</CardDescription>
+                  <div className="flex flex-col gap-4 mt-4">
+                    <div>
+                        <h4 className="text-sm font-medium mb-2">Select Staff</h4>
+                        <div className="flex flex-wrap gap-2">
+                            {STAFF_MEMBERS.map(staff => (
+                                <Button
+                                    key={staff}
+                                    variant={selectedStaff === staff ? 'default' : 'outline'}
+                                    onClick={() => setSelectedStaff(staff)}
+                                >
+                                    <User className='mr-2 h-4 w-4' />
+                                    {staff}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-medium mb-2">Select Period</h4>
+                        <div className="flex flex-wrap gap-2">
+                        {(['today', '7days', '30days', 'all'] as ShortageFilter[]).map(filter => (
+                          <Button
+                            key={filter}
+                            variant={shortageFilter === filter ? 'default' : 'outline'}
+                            onClick={() => setShortageFilter(filter)}
+                          >
+                            {filter === 'today' && 'Today'}
+                            {filter === '7days' && 'Last 7 Days'}
+                            {filter === '30days' && 'Last 30 Days'}
+                            {filter === 'all' && 'All Time'}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
-                    <Card className="mb-4">
-                        <CardHeader className="p-4">
-                            <CardTitle className='text-base'>Total Shortage for Period</CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4 pt-0">
-                            <div className="text-2xl font-bold">₦{shortageGrandTotal.toFixed(2)}</div>
-                        </CardContent>
-                    </Card>
-                    <Table>
-                        <TableHeader>
-                        <TableRow>
-                            <TableHead>Staff Name</TableHead>
-                            <TableHead className="text-right">Amount</TableHead>
-                        </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                        {sortedShortageDates.length > 0 ? (
-                            sortedShortageDates.map(date => (
-                            <React.Fragment key={date}>
-                                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                                    <TableCell className="font-bold text-muted-foreground">
-                                        {format(new Date(date), 'EEEE, MMMM d, yyyy')}
-                                    </TableCell>
-                                    <TableCell className="text-right font-bold text-muted-foreground">
-                                        Total: ₦{shortageDailyTotals[date]?.toFixed(2) || '0.00'}
-                                    </TableCell>
-                                </TableRow>
-                                {shortagesByDate[date].map(shortage => (
-                                <TableRow key={shortage.id}>
-                                    <TableCell className="font-medium whitespace-nowrap">{shortage.staffName}</TableCell>
-                                    <TableCell className="text-right whitespace-nowrap">₦{shortage.amount.toFixed(2)}</TableCell>
-                                </TableRow>
-                                ))}
-                            </React.Fragment>
-                            ))
-                        ) : (
+                    {selectedStaff && (
+                      <>
+                        <Card className="mb-4 bg-muted/30">
+                            <CardHeader className="p-4">
+                                <CardTitle className='text-base'>
+                                    Total Shortage for <span className="font-bold text-primary">{selectedStaff}</span>
+                                </CardTitle>
+                                <CardDescription>
+                                    Showing results for: {' '}
+                                    <span className='font-medium text-foreground'>
+                                    {
+                                        {
+                                            'today': 'Today',
+                                            '7days': 'Last 7 Days',
+                                            '30days': 'Last 30 Days',
+                                            'all': 'All Time'
+                                        }[shortageFilter]
+                                    }
+                                    </span>
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-4 pt-0">
+                                <div className="text-3xl font-bold text-destructive">₦{shortageGrandTotal.toFixed(2)}</div>
+                            </CardContent>
+                        </Card>
+                        <Table>
+                            <TableHeader>
                             <TableRow>
-                            <TableCell colSpan={2} className="text-center text-muted-foreground">
-                                No shortages recorded for the selected period.
-                            </TableCell>
+                                <TableHead>Date</TableHead>
+                                <TableHead className="text-right">Amount</TableHead>
                             </TableRow>
-                        )}
-                        </TableBody>
-                    </Table>
+                            </TableHeader>
+                            <TableBody>
+                            {sortedShortageDates.length > 0 ? (
+                                sortedShortageDates.map(date => (
+                                    <React.Fragment key={date}>
+                                        {shortagesByDate[date].map(shortage => (
+                                            <TableRow key={shortage.id}>
+                                                <TableCell className="font-medium whitespace-nowrap">
+                                                  {format(new Date(shortage.shortageDate.toDate()), 'EEEE, MMMM d, yyyy')}
+                                                </TableCell>
+                                                <TableCell className="text-right whitespace-nowrap">₦{shortage.amount.toFixed(2)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </React.Fragment>
+                                ))
+                            ) : (
+                                <TableRow>
+                                <TableCell colSpan={2} className="text-center text-muted-foreground h-24">
+                                    No shortages recorded for {selectedStaff} in this period.
+                                </TableCell>
+                                </TableRow>
+                            )}
+                            </TableBody>
+                        </Table>
+                      </>
+                    )}
                 </CardContent>
             </Card>
             </TabsContent>
