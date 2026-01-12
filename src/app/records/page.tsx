@@ -25,6 +25,26 @@ import { useCollection } from '@/firebase';
 import { useMemoFirebase, useFirestore } from '@/firebase/provider';
 import { collection, query, where } from 'firebase/firestore';
 import type { Item, Sale, StockLevel } from '@/lib/data';
+import { Package, ShoppingBag } from 'lucide-react';
+
+function NairaIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M6 18h12" />
+      <path d="M6 12h12" />
+      <path d="M19 6H5L12 20L19 6Z" />
+    </svg>
+  );
+}
 
 function FormattedTime({ date }: { date: any }) {
     const [time, setTime] = React.useState('');
@@ -53,11 +73,10 @@ export default function RecordsPage() {
   }, [firestore]);
   const { data: sales } = useCollection<Sale>(salesQuery);
   
-  const today = new Date().toISOString().split('T')[0];
   const stockLevelsQuery = useMemoFirebase(() => {
     if (!firestore) return null;
-    return query(collection(firestore, 'stockLevels'), where('date', '==', today));
-  }, [firestore, today]);
+    return collection(firestore, 'stockLevels');
+  }, [firestore]);
   const { data: stock } = useCollection<StockLevel>(stockLevelsQuery);
 
 
@@ -86,26 +105,36 @@ export default function RecordsPage() {
   const getStockSummary = React.useCallback(() => {
       if (!stock || !items) return [];
       const salesByItem = getSalesByItem();
-      return stock.map(stockItem => {
-          const item = items.find(i => i.id === stockItem.itemId);
-          const saleInfo = salesByItem.find(s => s.name === item?.name);
-          const sold = saleInfo?.quantity || 0;
-          const expected = stockItem.openingStock - sold;
-          const discrepancy = stockItem.closingStock - expected;
-  
+      
+      const salesMap = new Map<string, number>();
+      if (sales) {
+          for (const sale of sales) {
+              const current = salesMap.get(sale.itemId) || 0;
+              salesMap.set(sale.itemId, current + sale.quantity);
+          }
+      }
+
+      return items.map(item => {
+          const stockItem = stock.find(s => s.itemId === item.id);
+          const opening = stockItem?.quantity || 0;
+          const sold = salesMap.get(item.id) || 0;
+          const closing = opening - sold;
           return {
-              id: item?.id || '',
-              name: item?.name || 'Unknown',
-              opening: stockItem.openingStock,
-              sold,
-              expected,
-              closing: stockItem.closingStock,
-              discrepancy,
+              id: item.id,
+              name: item.name,
+              opening: opening,
+              sold: sold,
+              closing: closing,
           };
       });
-  }, [stock, items, getSalesByItem]);
+  }, [stock, items, sales, getSalesByItem]);
 
+  const salesSummary = getSalesByItem();
   const stockSummary = getStockSummary();
+
+  const totalRevenue = sales ? sales.reduce((acc, sale) => acc + (sale.quantity * (items?.find(i => i.id === sale.itemId)?.unitPrice || 0)), 0) : 0;
+  const totalItemsSold = sales ? sales.reduce((acc, sale) => acc + sale.quantity, 0) : 0;
+  const bestSeller = salesSummary.length > 0 ? salesSummary.reduce((max, item) => item.quantity > max.quantity ? item : max) : null;
 
 
   return (
@@ -117,6 +146,49 @@ export default function RecordsPage() {
         </Button>
       </header>
       <main className="mt-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <NairaIcon className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-headline">
+                  ₦{totalRevenue.toFixed(2)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Today's total sales
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Items Sold</CardTitle>
+                <ShoppingBag className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-headline">{totalItemsSold}</div>
+                <p className="text-xs text-muted-foreground">
+                  Total items sold today
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Best Seller</CardTitle>
+                <Package className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-headline">
+                  {bestSeller ? bestSeller.name : 'N/A'}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Top-selling item today
+                </p>
+              </CardContent>
+            </Card>
+        </div>
+
         <Tabs defaultValue="sales">
           <TabsList className="grid w-full grid-cols-2 max-w-sm">
             <TabsTrigger value="sales">Sales Records</TabsTrigger>
@@ -141,7 +213,7 @@ export default function RecordsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sales?.map((sale) => {
+                    {sales?.sort((a, b) => (b.saleDate?.toMillis() ?? 0) - (a.saleDate?.toMillis() ?? 0)).map((sale) => {
                       const item = items?.find((i) => i.id === sale.itemId);
                       return (
                         <TableRow key={sale.id}>
@@ -180,9 +252,7 @@ export default function RecordsPage() {
                       <TableHead>Item</TableHead>
                       <TableHead className="text-right">Opening</TableHead>
                       <TableHead className="text-right">Sold</TableHead>
-                      <TableHead className="text-right">Expected</TableHead>
                       <TableHead className="text-right">Closing</TableHead>
-                      <TableHead className="text-right">Discrepancy</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -191,13 +261,7 @@ export default function RecordsPage() {
                         <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
                         <TableCell className="text-right">{item.opening}</TableCell>
                         <TableCell className="text-right">{item.sold}</TableCell>
-                        <TableCell className="text-right">{item.expected}</TableCell>
-                        <TableCell className="text-right">{item.closing > 0 ? item.closing : '-'}</TableCell>
-                        <TableCell className="text-right">
-                          <Badge variant={item.discrepancy === 0 ? 'secondary' : 'destructive'} className='font-bold'>
-                            {item.discrepancy}
-                          </Badge>
-                        </TableCell>
+                        <TableCell className="text-right">{item.closing}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
