@@ -51,7 +51,6 @@ export default function RecordsPage() {
 
   const [salesSearchTerm, setSalesSearchTerm] = React.useState('');
   const [stockSearchTerm, setStockSearchTerm] = React.useState('');
-  const [shortageSearchTerm, setShortageSearchTerm] = React.useState('');
 
   // Common queries
   const itemsQuery = useMemoFirebase(() => {
@@ -164,10 +163,6 @@ export default function RecordsPage() {
   const getShortagesGroupedByDate = React.useCallback(() => {
     if (!shortages) return {};
     return shortages.reduce((acc, shortage) => {
-        if (shortageSearchTerm && !shortage.staffName.toLowerCase().includes(shortageSearchTerm.toLowerCase())) {
-            return acc;
-        }
-
         const shortageDate = shortage.shortageDate?.toDate ? shortage.shortageDate.toDate() : new Date(shortage.shortageDate);
         const dateKey = format(shortageDate, 'yyyy-MM-dd');
 
@@ -178,7 +173,7 @@ export default function RecordsPage() {
         acc[dateKey].sort((a, b) => (b.shortageDate?.toMillis() ?? 0) - (a.shortageDate?.toMillis() ?? 0));
         return acc;
     }, {} as Record<string, Shortage[]>);
-    }, [shortages, shortageSearchTerm]);
+    }, [shortages]);
 
 
   // Data for summary cards (today only)
@@ -374,15 +369,6 @@ export default function RecordsPage() {
                 <CardHeader>
                 <CardTitle>Shortage History</CardTitle>
                 <CardDescription>A public view of all staff shortages, grouped by date.</CardDescription>
-                <div className="relative mt-2">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                        placeholder="Search by staff name..."
-                        className="pl-8 w-full sm:w-64"
-                        value={shortageSearchTerm}
-                        onChange={(e) => setShortageSearchTerm(e.target.value)}
-                    />
-                </div>
                 </CardHeader>
                 <CardContent className="overflow-x-auto">
                 <Table>
@@ -412,7 +398,7 @@ export default function RecordsPage() {
                     ) : (
                         <TableRow>
                         <TableCell colSpan={2} className="text-center text-muted-foreground">
-                            {shortageSearchTerm ? `No shortages found for "${shortageSearchTerm}"` : 'No shortages recorded yet.'}
+                           'No shortages recorded yet.'
                         </TableCell>
                         </TableRow>
                     )}
