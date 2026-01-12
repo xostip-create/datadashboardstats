@@ -4,7 +4,7 @@ import * as React from 'react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { MoreHorizontal, Pencil, Trash2, ChevronsUpDown, Check } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 import type { Sale } from '@/lib/data';
 import { Button } from '@/components/ui/button';
 import {
@@ -37,14 +37,20 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { useToast } from '@/hooks/use-toast';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useDataContext } from '@/lib/data-provider';
 import { useFirestore } from '@/firebase';
-import { doc, collection, serverTimestamp, writeBatch, deleteDoc } from 'firebase/firestore';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { cn } from '@/lib/utils';
+import { doc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 
 type SaleFormValues = z.infer<ReturnType<typeof getSaleFormSchema>>;
@@ -55,7 +61,7 @@ function getSaleFormSchema(stockData: { itemId: string; quantity: number }[]) {
         quantity: z.coerce.number().min(1, 'Quantity must be at least 1.'),
     }).refine((data) => {
         const stockItem = stockData.find(s => s.itemId === data.itemId);
-        if (!stockItem) return true; 
+        if (!stockItem) return true; // Let it pass if stock not found, handle in submit
         const availableStock = stockItem.quantity;
         return data.quantity <= availableStock;
     }, {
@@ -77,7 +83,6 @@ function FormattedTime({ date }: { date: any }) {
 }
 
 export default function SalesPage() {
-  const { toast } = useToast();
   const firestore = useFirestore();
   const { items, sales, stock } = useDataContext();
 
@@ -112,11 +117,8 @@ export default function SalesPage() {
     const stockItem = stock?.find(s => s.itemId === data.itemId);
 
     if (!stockItem) {
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Stock information for this item not found.",
-        });
+        // This case should ideally not happen if items and stock are in sync
+        console.error("Stock information for this item not found.");
         return;
     }
 
@@ -135,13 +137,9 @@ export default function SalesPage() {
     
 
     await batch.commit();
-    toast({
-        title: "Sale Logged",
-        description: `Successfully logged sale.`,
-    });
     form.reset();
   }
-
+  
   const handleDeleteRequest = (sale: Sale) => {
     setSaleToDelete(sale);
     setIsConfirmingDelete(true);
@@ -157,13 +155,9 @@ export default function SalesPage() {
 
     const stockItem = stock?.find(s => s.itemId === saleToDelete.itemId);
     if (!stockItem) {
-        toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Could not find stock to return for this sale.",
-        });
-        setSaleToDelete(null);
+        console.error("Could not find stock to return for this sale.");
         setIsConfirmingDelete(false);
+        setSaleToDelete(null);
         return;
     }
 
@@ -177,21 +171,11 @@ export default function SalesPage() {
 
     try {
       await batch.commit();
-      toast({
-          title: 'Sale Deleted',
-          description: 'The sale record has been removed and stock was returned.',
-          variant: 'destructive'
-      });
     } catch(e) {
       console.error("Failed to delete sale:", e)
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to delete the sale record.",
-      });
     } finally {
-      setSaleToDelete(null);
       setIsConfirmingDelete(false);
+      setSaleToDelete(null);
     }
   };
 
@@ -208,64 +192,28 @@ export default function SalesPage() {
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col sm:flex-row items-start gap-4">
                     <FormField
-                        control={form.control}
-                        name="itemId"
-                        render={({ field }) => (
-                            <FormItem className="flex-1 w-full sm:w-auto">
-                                <FormLabel>Item</FormLabel>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <FormControl>
-                                        <Button
-                                            variant="outline"
-                                            role="combobox"
-                                            className={cn(
-                                            "w-full justify-between",
-                                            !field.value && "text-muted-foreground"
-                                            )}
-                                        >
-                                            {field.value
-                                            ? items?.find(
-                                                (item) => item.id === field.value
-                                                )?.name
-                                            : "Select item"}
-                                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                        </Button>
-                                        </FormControl>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-full p-0" align="start">
-                                        <Command>
-                                            <CommandInput placeholder="Search item..." />
-                                            <CommandList>
-                                                <CommandEmpty>No item found.</CommandEmpty>
-                                                <CommandGroup>
-                                                    {items?.map((item) => (
-                                                    <CommandItem
-                                                        value={item.name}
-                                                        key={item.id}
-                                                        onSelect={() => {
-                                                            form.setValue("itemId", item.id)
-                                                        }}
-                                                    >
-                                                        <Check
-                                                            className={cn(
-                                                                "mr-2 h-4 w-4",
-                                                                item.id === field.value
-                                                                ? "opacity-100"
-                                                                : "opacity-0"
-                                                            )}
-                                                        />
-                                                        {item.name}
-                                                    </CommandItem>
-                                                    ))}
-                                                </CommandGroup>
-                                            </CommandList>
-                                        </Command>
-                                    </PopoverContent>
-                                </Popover>
-                                <FormMessage />
-                            </FormItem>
-                        )}
+                      control={form.control}
+                      name="itemId"
+                      render={({ field }) => (
+                        <FormItem className="flex-1 w-full sm:w-auto">
+                          <FormLabel>Item</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select an item" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {items?.map((item) => (
+                                <SelectItem key={item.id} value={item.id}>
+                                  {item.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
                     <FormField
                         control={form.control}
